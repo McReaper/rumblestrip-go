@@ -21,6 +21,7 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 
 ## Rules
 
+- Rumblestrip is for one owner who reads the spec, never the code (ADR 9). When a check misses something, close the gap with another check, never with something more for the owner to read.
 - No config from memory: a rule enters `docs/rumblestrip.md` only once a case proves it, with the exact finding (tool, file, line, message).
 - A case that runs one tool only: mark it `!isolated` if it replaces a file others build on (go.mod).
 - Never run go-mutesting on `template`: it rewrites the source while tests run. The proof runs it on copies.
