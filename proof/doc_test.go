@@ -81,7 +81,7 @@ var (
 // docs/rumblestrip.md.
 func TestTheHumanDocsStayShort(t *testing.T) {
 	for file, budget := range map[string]int{
-		"../README.md":          550,
+		"../README.md":          650,
 		"../docs/guide.md":      600,
 		"../docs/setup.md":      500,
 		"../template/README.md": 150,

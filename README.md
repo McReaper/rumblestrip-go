@@ -12,6 +12,7 @@
 </p>
 
 <p align="center">
+    <a href="#-one-owner-no-code-review">One owner</a> ·
     <a href="#-what-you-get">What you get</a> ·
     <a href="#%EF%B8%8F-how-a-change-goes">How a change goes</a> ·
     <a href="#-set-it-up">Set it up</a> ·
@@ -19,11 +20,20 @@
     <a href="#-license">License</a>
 </p>
 
-A rumble strip is the grooved edge of a road: drift onto it and it rumbles, so you steer back. Rumblestrip does that for an AI agent writing Go: every rule it crosses rumbles with an error that says the fix, and nothing merges until every check passes. You read one thing: what the app should do.
+A rumble strip is the grooved edge of a road: drift onto it and it rumbles, so you steer back. Rumblestrip does that for an AI agent writing Go: every rule it crosses rumbles with an error that says the fix, and nothing merges until every check passes. You read one thing: what the app should do. Never the code.
+
+## 🧭 One owner, no code review
+
+Rumblestrip is for one owner and an AI agent that writes the code. Not reviewing the code is the design:
+
+- **Machines read code better than a tired person.** Reviews catch fewer bugs than people expect, and far fewer past a few hundred lines. An agent's pull request is often longer than that. The checks read every line.
+- **Only you can judge the intent.** Whether to refuse a long title is your call; whether the code holds up is the checks' job.
+- **Your reading stays small:** a few lines of spec per feature, not hundreds of lines of code.
+
+A team gives something up: review is how people learn the code, and some teams need a second person to approve each change. There, keep code review. [Why, in full](docs/adr/0009-one-owner-reads-the-spec-not-the-code.md).
 
 ## ✨ What you get
 
-- **You approve the what, never the how** — the agent writes the spec first, short scenarios in plain English. You read and approve those; the code is the checks' to judge.
 - **About twenty checks the agent can't switch off** — tests, the spec, lint, architecture, dead code, nil safety, known vulnerabilities, secrets, the workflows. They live in Rumblestrip, pinned by version, out of the agent's reach.
 - **A rumble before CI** — in Claude Code, Rumblestrip checks each package the agent edits, refuses a gesture past the rules (a force push, editing CI, skipping hooks), and runs every check before the agent stops.
 - **One line that says where things stand** — on each pull request: the checks running, the ones that fail, waiting for you, merged.
