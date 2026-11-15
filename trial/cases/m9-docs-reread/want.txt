@@ -1,0 +1,5 @@
+# M9: the same change, which also rereads two of the docs due. That is as many as a change owes, though a
+# third doc is still due.
+!isolated
+!delete internal/platform/op/op.go
+!expect-none docs

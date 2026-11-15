@@ -13,6 +13,7 @@ import (
 	"github.com/McReaper/rumblestrip-go/gesture"
 	"github.com/McReaper/rumblestrip-go/guard"
 	"github.com/McReaper/rumblestrip-go/internal/platform/gitleaks"
+	"github.com/McReaper/rumblestrip-go/reread"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +47,11 @@ func hookCommand() *cobra.Command {
 	stop := leaf("stop", "Run rumblestrip check before the agent stops; a failing gate keeps it working, once", func(cmd *cobra.Command) error { return stopHook(cmd, base) })
 	stop.Flags().StringVar(&base, "base", "origin/main", "the branch the change goes into")
 	hook.AddCommand(&cobra.Command{
+		Use:   "session-start",
+		Short: "Tell the agent which docs its change must reread; quiet when none",
+		Args:  cobra.NoArgs,
+		RunE:  sessionStartHook,
+	}, &cobra.Command{
 		Use:   "post-edit",
 		Short: "Lint the package of the Go file just edited; findings go back to the agent",
 		Args:  cobra.NoArgs,
@@ -57,6 +63,38 @@ func hookCommand() *cobra.Command {
 		RunE:  preToolHook,
 	})
 	return hook
+}
+
+// WHY: what a SessionStart hook prints goes into the agent's context.
+func sessionStartHook(cmd *cobra.Command, _ []string) error {
+	h, err := readHookInput(cmd.InOrStdin())
+	if err != nil || h.Cwd == "" {
+		h.Cwd = "."
+	}
+	docs := docsOwed(cmd.Context(), h.Cwd)
+	if len(docs) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("Rumblestrip: docs to reread in this change, the oldest first:\n")
+	for _, d := range docs {
+		b.WriteString("- " + d.Path + " " + d.Since() + "\n")
+	}
+	b.WriteString("Reread each against the code, fix what no longer holds, then run rumblestrip docs reread <doc>. The Docs check holds the change until then.\n")
+	if _, err := io.WriteString(cmd.OutOrStdout(), b.String()); err != nil {
+		return fmt.Errorf("write the docs to reread: %w", err)
+	}
+	return nil
+}
+
+// WHY: a session must start whatever git says, so a failure owes nothing
+// here: the Docs gate tells the agent again before it stops.
+func docsOwed(ctx context.Context, dir string) []reread.Doc {
+	r, err := reread.Status(ctx, dir, "origin/main")
+	if err != nil {
+		return nil
+	}
+	return r.Required()
 }
 
 // WHY: Claude Code refuses the tool call on exit code 2 and shows the agent

@@ -1,8 +1,8 @@
 // Package check runs every gate of Rumblestrip on a module, the same way on an
 // agent's machine and in CI: lint and Rumblestrip's analyzers per target
 // system, archtest, sweep, dead code, nil flows, known vulnerabilities,
-// the tests, the spec's proof, the guard, and the workflows, scripts and
-// secrets.
+// the tests, the spec's proof, the guard, the docs to reread, and the
+// workflows, scripts and secrets.
 package check
 
 import (
@@ -152,7 +152,8 @@ func gates(o Options) []gate {
 		gate{Gate{"govulncheck", "govulncheck", "Known vulnerabilities", "The code calls no function with a known vulnerability."}, vulnGate},
 		gate{Gate{"go-test", "go test", "Tests", "Every test passes, but the spec's: Spec runs those."}, testGate},
 		gate{Gate{"spec", "spec", "Spec", "Each built scenario passes, and fails once a value it expects is altered."}, specGate},
-		gate{Gate{"guard", "guard", "Guard", "No check is switched off: no //nolint, no skipped test, no build tag that hides a file."}, guardGate})
+		gate{Gate{"guard", "guard", "Guard", "No check is switched off: no //nolint, no skipped test, no build tag that hides a file."}, guardGate},
+		gate{Gate{"docs", "docs", "Docs", "Each doc is reread against the code once a quarter of the code has changed since its last reread, two docs a change at most."}, docsGate})
 	gs = append(gs, fileGates()...)
 	if o.Title != "" {
 		gs = append(gs, gate{Gate{"title", "title", "Title", "The pull request's title is a conventional commit of " + strconv.Itoa(pr.MaxTitle) + " characters at most."}, titleGate})

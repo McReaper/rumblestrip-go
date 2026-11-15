@@ -32,6 +32,7 @@ Besides the spec, these are yours:
 
 - a new dependency, or a change to Go's version;
 - the agent's instructions and the CI: `AGENTS.md`, `CLAUDE.md`, `.github/`, `.claude/`, `.rumblestrip/`, the ADRs;
+- a doc the agent would stop rereading. Rereading one is the agent's: the Docs check makes it reread each doc once a quarter of the code has changed;
 - an incompatible change to a library's API (`pkg/`);
 - a change of more than 400 lines of code.
 
