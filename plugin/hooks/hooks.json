@@ -1,10 +1,13 @@
 {
-  "description": "Rumblestrip's rules in every session; a gesture past Rumblestrip refused before it runs; each edit's package checked; the full check before the agent stops.",
+  "description": "Rumblestrip's rules in every session, and the docs to reread; a gesture past Rumblestrip refused before it runs; each edit's package checked; the full check before the agent stops.",
   "hooks": {
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",
-        "hooks": [{ "type": "command", "command": "cat \"${CLAUDE_PLUGIN_ROOT}/rules.md\"" }]
+        "hooks": [
+          { "type": "command", "command": "cat \"${CLAUDE_PLUGIN_ROOT}/rules.md\"" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/rumblestrip\" hook session-start" }
+        ]
       }
     ],
     "PreToolUse": [

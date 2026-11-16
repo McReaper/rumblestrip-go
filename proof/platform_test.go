@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/McReaper/rumblestrip-go/guard"
+	"github.com/McReaper/rumblestrip-go/reread"
 	"github.com/McReaper/rumblestrip-go/setup"
 )
 
@@ -477,5 +478,19 @@ func TestThePostEditHookTellsTheAgentWhatItsEditBroke(t *testing.T) {
 func TestTheStopHookLetsTheAgentStopOnItsSecondTry(t *testing.T) {
 	if out, code := hookRun(t, `{"cwd":".","stop_hook_active":true}`, "stop"); code != 0 {
 		t.Errorf("stop_hook_active: exit %d\n%s", code, out)
+	}
+}
+
+// WHY: GitHub takes a file's owners from the last pattern that matches it,
+// so the rereads, listed with no owner after the harness, need no one.
+func TestTheAppCodeOwnersLeaveTheRereadsToTheAgent(t *testing.T) {
+	lines := slices.Collect(strings.Lines(initFiles(t)[".github/CODEOWNERS"]))
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	harness := slices.Index(lines, "/.rumblestrip/ @OWNER")
+	free := slices.Index(lines, "/"+reread.File)
+	if harness < 0 || free < harness {
+		t.Errorf("CODEOWNERS must list /%s with no owner after /.rumblestrip/:\n%s", reread.File, strings.Join(lines, "\n"))
 	}
 }

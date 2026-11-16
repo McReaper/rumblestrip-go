@@ -41,7 +41,7 @@ func main() {
 
 func root(out io.Writer) *cobra.Command {
 	r := &cobra.Command{Use: "rumblestrip", Short: "Rumblestrip's checks: the rails AI-written Go stays on", SilenceUsage: true, SilenceErrors: true}
-	r.AddCommand(checkCommand(out), guardCommand(out), sweepCommand(out), mutateCommand(out), reviewCommand(out), appCommand(out), hookCommand(), specCommand(out), secretsCommand(out), initCommand(out), prCommand(out))
+	r.AddCommand(checkCommand(out), guardCommand(out), sweepCommand(out), docsCommand(out), mutateCommand(out), reviewCommand(out), appCommand(out), hookCommand(), specCommand(out), secretsCommand(out), initCommand(out), prCommand(out))
 	return r
 }
 
@@ -143,4 +143,9 @@ func writeJSON(out io.Writer, findings []guard.Finding) error {
 // WHY: every rumblestrip command takes flags and no argument; one helper builds them.
 func leaf(use, short string, run func(*cobra.Command) error) *cobra.Command {
 	return &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return run(cmd) }}
+}
+
+// WHY: the few commands that name what they act on take one name or more.
+func leafOn(use, short string, run func(*cobra.Command, []string) error) *cobra.Command {
+	return &cobra.Command{Use: use, Short: short, Args: cobra.MinimumNArgs(1), RunE: run}
 }

@@ -3,7 +3,10 @@ package guard
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/McReaper/rumblestrip-go/reread"
 )
 
 var (
@@ -20,7 +23,17 @@ func Harness() []string {
 	return []string{".github/", ".claude/", ".rumblestrip/", "AGENTS.md", "CLAUDE.md", "docs/adr/", "GLOSSARY.md"}
 }
 
+// Free lists the files of the harness the agent changes without the
+// owner: the rereads of the docs, which a change records as it rereads
+// them. A line that leaves a doc out of them is still the owner's.
+func Free() []string {
+	return []string{reread.File}
+}
+
 func isHarness(p string) bool {
+	if slices.Contains(Free(), p) {
+		return false
+	}
 	for _, h := range Harness() {
 		switch {
 		case strings.HasSuffix(h, "/") && strings.HasPrefix(p, h), p == h, h == "GLOSSARY.md" && path.Base(p) == h:
@@ -44,6 +57,24 @@ func protected(f File) []Finding {
 	}
 	if path.Base(f.Path) == "go.mod" && f.Status != 'D' {
 		out = append(out, goModChanges(f)...)
+	}
+	if f.Path == reread.File {
+		out = append(out, rereadSkips(f)...)
+	}
+	return out
+}
+
+// WHY: what the agent stops rereading would rot unseen, so leaving a doc
+// out is the owner's call, like the harness; rereading one is not.
+func rereadSkips(f File) []Finding {
+	var out []Finding
+	for _, l := range f.Added {
+		if r, err := reread.ParseLine(l.Text); err == nil && r.Skip {
+			out = append(out, Finding{
+				"protected-reread-skip", f.Path, l.N,
+				"T2: " + r.Doc + " left out of the docs to reread: a doc no one rereads goes stale, so the owner approves leaving one out",
+			})
+		}
 	}
 	return out
 }

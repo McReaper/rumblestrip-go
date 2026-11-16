@@ -102,6 +102,7 @@ jobs:
           - { id: go-test, title: Tests }
           - { id: spec, title: Spec }
           - { id: guard, title: Guard }
+          - { id: docs, title: Docs }
           - { id: actionlint, title: Workflows }
           - { id: zizmor, title: Workflow security }
           - { id: shellcheck, title: Shell scripts }

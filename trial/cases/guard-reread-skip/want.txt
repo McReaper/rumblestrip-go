@@ -1,0 +1,4 @@
+# T2: rereading a doc is the agent's, though its line is in .rumblestrip/; leaving a doc out is the
+# owner's. One finding, on the skip line.
+!isolated
+guard/protected-reread-skip .rumblestrip/reread.jsonl:4 internal/notes/ left out of the docs to reread

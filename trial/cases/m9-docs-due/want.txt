@@ -1,0 +1,6 @@
+# M9: a third of the code changed since the docs were last reread. The change must reread two, the oldest
+# first: here they were reread together, so by path.
+!isolated
+!delete internal/platform/op/op.go
+docs/due AGENTS.md:0 AGENTS\.md was last reread on 2026-11-15, and \d+% of the code has changed since: reread it against the code
+docs/due README.md:0 README\.md was last reread on 2026-11-15, and \d+% of the code has changed since

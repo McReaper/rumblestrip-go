@@ -64,10 +64,11 @@ type templateData struct {
 	Owner      string
 	OwnerEmail string
 	Harness    []string
+	Free       []string
 }
 
 func renderAll(o Options, fs []struct{ path, from string }) ([]File, error) {
-	data := templateData{o.Version, o.Owner, o.OwnerEmail, codeOwned()}
+	data := templateData{o.Version, o.Owner, o.OwnerEmail, codeOwned(), codeFree()}
 	var out []File
 	for _, f := range fs {
 		content, err := render(f.from, data)
@@ -89,6 +90,16 @@ func codeOwned() []string {
 		} else {
 			out = append(out, "/"+h)
 		}
+	}
+	return out
+}
+
+// WHY: the last pattern that matches a file names its owners, so a free
+// file, listed after the harness without an owner, needs none.
+func codeFree() []string {
+	var out []string
+	for _, f := range guard.Free() {
+		out = append(out, "/"+f)
 	}
 	return out
 }
