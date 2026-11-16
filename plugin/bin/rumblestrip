@@ -1,7 +1,14 @@
 #!/bin/sh
 # rumblestrip, at the version the repository pins: the commit its
 # .github/workflows/rumblestrip.yml calls rumblestrip-check.yml at, so the agent's checks
-# are the merge check's. go run builds it once and caches it.
+# are the merge check's.
+#
+# With Docker, a check runs in Rumblestrip's image of that commit, which holds
+# every tool the checks run. One container a repository stays up for the day,
+# so a hook doesn't pay a container's start. The image is pulled in the
+# background the first time: until it's there, and without Docker, go run
+# builds rumblestrip once and caches it, and the tools come from the PATH.
+# RUMBLESTRIP_DOCKER=0 turns the image off.
 set -eu
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "rumblestrip: not in a git repository" >&2
@@ -11,5 +18,60 @@ pin=$(sed -n 's|.*rumblestrip-go/\.github/workflows/rumblestrip-check\.yml@\([0-
 if [ -z "$pin" ]; then
   echo "rumblestrip: $root/.github/workflows/rumblestrip.yml pins no Rumblestrip version: run rumblestrip init" >&2
   exit 2
+fi
+image=ghcr.io/mcreaper/rumblestrip:sha-$pin
+# WHY: Git Bash rewrites an argument that looks like a POSIX path, the
+# container's /work included.
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
+# The checks run in the image; pr, app and init need the host's credentials.
+checks() {
+  case ${1-} in
+    check | docs | guard | hook | mutate | review | spec | sweep) ;;
+    *) return 1 ;;
+  esac
+  [ "${RUMBLESTRIP_DOCKER-}" != 0 ] && command -v docker >/dev/null 2>&1
+}
+
+# One pull at a time; after a failure, none for an hour.
+pull_later() {
+  lock=${TMPDIR:-/tmp}/rumblestrip-pull-$pin
+  if [ -d "$lock" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +60 2>/dev/null)" ]; then
+    return 0
+  fi
+  rm -rf "$lock"
+  mkdir "$lock" 2>/dev/null || return 0
+  (docker pull --quiet "$image" && rmdir "$lock") </dev/null >/dev/null 2>&1 &
+}
+
+running() {
+  [ "$(docker inspect --format '{{.State.Running}}' "$1" 2>/dev/null)" = true ]
+}
+
+start() {
+  running "$1" && return 0
+  docker rm --force "$1" >/dev/null 2>&1 || true
+  set -- "$1" --detach --rm --name "$1" --mount "type=bind,source=$root,target=/work" --volume rumblestrip-go:/go
+  case $(uname -s) in
+    MINGW* | MSYS* | CYGWIN*) ;;
+    *) set -- "$@" --user "$(id -u):$(id -g)" ;;
+  esac
+  name=$1
+  shift
+  docker run "$@" "$image" sleep 86400 >/dev/null 2>&1 || running "$name"
+}
+
+if checks "$@"; then
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$(printf '%.12s' "$pin")
+    if start "$container"; then
+      exec docker exec --interactive --workdir "/work/$(git rev-parse --show-prefix)" \
+        --env RUMBLESTRIP_HOST_ROOT="$root" --env RUMBLESTRIP_ROOT=/work \
+        --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=core.autocrlf --env GIT_CONFIG_VALUE_0="$(git config core.autocrlf || echo false)" \
+        "$container" rumblestrip "$@"
+    fi
+  else
+    pull_later
+  fi
 fi
 exec go run "github.com/McReaper/rumblestrip-go/cmd/rumblestrip@$pin" "$@"

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/McReaper/rumblestrip-go/guard"
 	"github.com/McReaper/rumblestrip-go/reread"
@@ -329,35 +330,102 @@ func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
 	}
 }
 
+// WHY: plugin/bin/rumblestrip runs in a repository rumblestrip init set
+// up, with a go and a docker on the PATH that say how they were called.
+type launcher struct{ dir, fakes, tmp, log, commit string }
+
+const fakeDocker = `#!/bin/sh
+echo "docker $*" >> "$FAKE_DOCKER_LOG"
+case $1 in
+  image) [ "$FAKE_IMAGE" = present ] ;;
+  inspect) echo false ;;
+  exec) echo "docker $*" ;;
+esac
+`
+
+func newLauncher(t *testing.T) launcher {
+	t.Helper()
+	l := launcher{dir: t.TempDir(), fakes: t.TempDir(), tmp: t.TempDir(), commit: strings.Repeat("ab", 20)}
+	l.log = filepath.Join(l.tmp, "docker.log")
+	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.3.0", Commit: l.commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.Write(l.dir, fs); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, l.dir, "init", "-q")
+	for name, script := range map[string]string{"go": "#!/bin/sh\necho \"go $*\"\n", "docker": fakeDocker} {
+		if err := os.WriteFile(filepath.Join(l.fakes, name), []byte(script), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runIn(t, place{dir: l.fakes}, "chmod", "+x", name)
+	}
+	return l
+}
+
+// WHY: image is what the fake docker has: present, missing, or off, which
+// turns the image off as RUMBLESTRIP_DOCKER=0 does.
+func (l launcher) run(t *testing.T, image string, args ...string) string {
+	t.Helper()
+	path, err := filepath.Abs("../plugin/bin/rumblestrip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := `PATH="$(cd "$1" && pwd):$PATH"; l=$2; shift 2; exec "$l" "$@"`
+	cmd := exec.CommandContext(t.Context(), "sh", append([]string{"-c", script, "sh", filepath.ToSlash(l.fakes), filepath.ToSlash(path)}, args...)...)
+	cmd.Dir = l.dir
+	cmd.Env = append(os.Environ(), "FAKE_IMAGE="+image, "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "TMPDIR="+filepath.ToSlash(l.tmp))
+	if image == "off" {
+		cmd.Env = append(cmd.Env, "RUMBLESTRIP_DOCKER=0")
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the launcher: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+// WHY: the image is pulled in the background, so the call that starts the
+// pull returns first.
+func (l launcher) logged(t *testing.T, want string) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if data, err := os.ReadFile(l.log); err == nil && strings.Contains(string(data), want) {
+			return
+		}
+	}
+	data, err := os.ReadFile(l.log)
+	t.Errorf("docker was never called with %q: %v\n%s", want, err, data)
+}
+
 // WHY: the plugin's hooks run rumblestrip at the commit the repository's
 // workflow pins, so the agent's checks are the merge check's; a launcher
-// that misreads the pin runs nothing, and every hook fails.
+// that misreads the pin runs nothing, and every hook fails. With Docker, a
+// check runs in the image of that commit, which holds every tool; until the
+// image is pulled, and for a command that needs the host's credentials, go
+// run builds rumblestrip.
 func launcherRunsThePinnedVersion(t *testing.T) {
 	t.Helper()
-	dir := t.TempDir()
-	commit := strings.Repeat("ab", 20)
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.3.0", Commit: commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
-	if err != nil {
-		t.Fatal(err)
+	l := newLauncher(t)
+	goRun := "go run github.com/McReaper/rumblestrip-go/cmd/rumblestrip@" + l.commit
+	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
+	if out := l.run(t, "missing", "check"); out != goRun+" check\n" {
+		t.Errorf("a check before the image is pulled ran %q, want %q", out, goRun+" check\n")
 	}
-	if _, err := setup.Write(dir, fs); err != nil {
-		t.Fatal(err)
+	l.logged(t, "docker pull --quiet "+image)
+	out := l.run(t, "present", "hook", "stop")
+	container := regexp.MustCompile(` (rumblestrip-\d+-` + l.commit[:12] + `) rumblestrip hook stop\n$`).FindStringSubmatch(out)
+	if !strings.HasPrefix(out, "docker exec --interactive --workdir /work/ ") || !strings.Contains(out, " --env RUMBLESTRIP_ROOT=/work ") || container == nil {
+		t.Fatalf("a hook with the image pulled ran %q", out)
 	}
-	gitIn(t, dir, "init", "-q")
-	fake := t.TempDir()
-	if err := os.WriteFile(filepath.Join(fake, "go"), []byte("#!/bin/sh\necho \"go $*\"\n"), 0o600); err != nil {
-		t.Fatal(err)
+	l.logged(t, "docker run --detach --rm --name "+container[1]+" --mount type=bind,source=")
+	l.logged(t, image+" sleep 86400")
+	if out := l.run(t, "present", "pr", "stack"); out != goRun+" pr stack\n" {
+		t.Errorf("pr, which needs the host's credentials, ran %q", out)
 	}
-	runIn(t, place{dir: fake}, "chmod", "+x", "go")
-	launcher, err := filepath.Abs("../plugin/bin/rumblestrip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.CommandContext(t.Context(), "sh", "-c", `PATH="$(cd "$1" && pwd):$PATH" "$2" check`, "sh", filepath.ToSlash(fake), filepath.ToSlash(launcher))
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if want := "go run github.com/McReaper/rumblestrip-go/cmd/rumblestrip@" + commit + " check\n"; err != nil || string(out) != want {
-		t.Errorf("the launcher in a repository rumblestrip init set up: %v\n%s\nwant %s", err, out, want)
+	if out := l.run(t, "off", "check"); out != goRun+" check\n" {
+		t.Errorf("RUMBLESTRIP_DOCKER=0 ran %q", out)
 	}
 }
 
@@ -472,6 +540,29 @@ func TestThePostEditHookTellsTheAgentWhatItsEditBroke(t *testing.T) {
 	}
 	if out, code := hookRun(t, editOf(t, clean), "post-edit"); code != 0 || out != "" {
 		t.Errorf("a clean package: exit %d, said %q", code, out)
+	}
+}
+
+// WHY: in Rumblestrip's image, the launcher mounts the repository at
+// RUMBLESTRIP_ROOT, and Claude Code still gives the hooks the host's paths,
+// a Windows one included: a hook that took them as given would check a
+// file that isn't there.
+func TestTheHooksReadTheHostsPathsInTheImage(t *testing.T) {
+	dir := overlay(t, caseNamed(t, "m1-simplicity"))
+	t.Setenv("RUMBLESTRIP_ROOT", dir)
+	for host, file := range map[string]string{
+		`C:\Users\Dev\app`:  `c:\users\dev\app\internal\notes\internal\m1case\m1.go`,
+		"C:/Users/Dev/app/": "/c/Users/Dev/app/internal/notes/internal/m1case/m1.go",
+		"/home/dev/app":     "/home/dev/app/internal/notes/internal/m1case/m1.go",
+	} {
+		t.Setenv("RUMBLESTRIP_HOST_ROOT", host)
+		if out, code := hookRun(t, editOf(t, file), "post-edit"); code != 2 || !strings.Contains(out, "cognitive complexity 11") {
+			t.Errorf("an edit of %s, the repository at %s on the host: exit %d\n%s", file, host, code, out)
+		}
+	}
+	t.Setenv("RUMBLESTRIP_HOST_ROOT", "/home/dev/app")
+	if out, _ := hookRun(t, editOf(t, "/home/dev/application/x.go"), "post-edit"); !strings.Contains(out, filepath.FromSlash("/home/dev/application")) {
+		t.Errorf("a file outside the repository is read elsewhere: %s", out)
 	}
 }
 
