@@ -17,7 +17,8 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
 - `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `trial/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
 - `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rumblestrip.md` against the cases and `tools.txt`.
-- `tools.txt` — every tool's pinned version; CI installs exactly these.
+- `tools.txt` — every tool's pinned version; the image installs exactly these.
+- `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it; `.trivyignore.yaml` holds the findings that don't apply, each with why.
 
 ## Rules
 
@@ -33,5 +34,5 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 
 ## Commands
 
-- Everything: `go test ./...` (needs the tools in `tools.txt` on the PATH; zizmor through `ZIZMOR=<path>` if pip put it elsewhere). The race proof is Linux only.
+- Everything, in the image as CI runs it: `docker build -t rumblestrip .`, then `docker run --rm -v "$PWD:/work" rumblestrip go test ./...`. Outside it, `go test ./...` needs the tools in `tools.txt` on the PATH (zizmor through `ZIZMOR=<path>` if pip put it elsewhere). The race proof is Linux only.
 - One proof: `go test ./proof/ -run TestGuardReportsEveryCase`.
