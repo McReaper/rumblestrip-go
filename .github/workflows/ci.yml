@@ -74,6 +74,7 @@ jobs:
           output: trivy.sarif
           exit-code: "0"
           severity: CRITICAL,HIGH
+          trivyignores: .trivyignore.yaml
       # A fork's pull request gets a read-only token: its report can't go up.
       - if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
@@ -91,6 +92,7 @@ jobs:
           vuln-type: os
           ignore-unfixed: true
           skip-setup-trivy: true
+          trivyignores: .trivyignore.yaml
       - name: Scan the image, gate on anything critical
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -100,6 +102,7 @@ jobs:
           exit-code: "1"
           severity: CRITICAL
           skip-setup-trivy: true
+          trivyignores: .trivyignore.yaml
       # Publish pushes this very image: a second build could differ.
       - name: Keep the image proven here, for publish
         if: github.event_name == 'push'
