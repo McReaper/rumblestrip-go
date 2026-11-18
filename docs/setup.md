@@ -28,7 +28,7 @@ With the App's `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`, it checks 
 
 ## The agent's machine
 
-With Docker running, the plugin runs the agent's checks in Rumblestrip's image: every tool they need, at the versions CI runs. The image downloads in the background the first time. Until then, and without Docker, the checks use the tools installed on the machine, those `tools.txt` lists. `RUMBLESTRIP_DOCKER=0` turns the image off.
+With Docker running, the plugin runs the agent's checks in Rumblestrip's image: every tool they need, at the versions CI runs. The image downloads in the background the first time. Until then, and without Docker, the checks use the tools installed on the machine, those `tools.txt` lists. They do too on a machine that isn't x86-64, and in a linked worktree or a submodule, whose git directory the container can't see. `RUMBLESTRIP_DOCKER=0` turns the image off.
 
 ## Harder to undo: managed settings
 

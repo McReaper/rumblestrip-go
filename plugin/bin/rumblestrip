@@ -20,17 +20,24 @@ if [ -z "$pin" ]; then
   exit 2
 fi
 image=ghcr.io/mcreaper/rumblestrip:sha-$pin
+container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$(printf '%.12s' "$pin")
 # WHY: Git Bash rewrites an argument that looks like a POSIX path, the
 # container's /work included.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
 # The checks run in the image; pr, app and init need the host's credentials.
+# The image is x86-64's. It mounts the repository alone, and a linked
+# worktree's or a submodule's git directory lies outside it.
 checks() {
   case ${1-} in
     check | docs | guard | hook | mutate | review | spec | sweep) ;;
     *) return 1 ;;
   esac
-  [ "${RUMBLESTRIP_DOCKER-}" != 0 ] && command -v docker >/dev/null 2>&1
+  case $(uname -m) in
+    x86_64 | amd64) ;;
+    *) return 1 ;;
+  esac
+  [ -d "$root/.git" ] && [ "${RUMBLESTRIP_DOCKER-}" != 0 ] && command -v docker >/dev/null 2>&1
 }
 
 # One pull at a time; after a failure, none for an hour.
@@ -44,34 +51,52 @@ pull_later() {
   (docker pull --quiet "$image" && rmdir "$lock") </dev/null >/dev/null 2>&1 &
 }
 
-running() {
-  [ "$(docker inspect --format '{{.State.Running}}' "$1" 2>/dev/null)" = true ]
+state() {
+  docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null
 }
 
+running() {
+  [ "$(state)" = running ]
+}
+
+# WHY: --rm removes a container once it stops, so one that is there but not
+# running is another hook's, starting; one that never runs is removed, for
+# the next call to start afresh.
 start() {
-  running "$1" && return 0
-  docker rm --force "$1" >/dev/null 2>&1 || true
-  set -- "$1" --detach --rm --name "$1" --mount "type=bind,source=$root,target=/work" --volume rumblestrip-go:/go
+  running && return 0
+  set -- --detach --rm --init --name "$container" --mount "type=bind,source=$root,target=/work" --volume rumblestrip-go:/go
   case $(uname -s) in
     MINGW* | MSYS* | CYGWIN*) ;;
     *) set -- "$@" --user "$(id -u):$(id -g)" ;;
   esac
-  name=$1
-  shift
-  docker run "$@" "$image" sleep 86400 >/dev/null 2>&1 || running "$name"
+  docker run "$@" "$image" sleep 86400 >/dev/null 2>&1 && return 0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    s=$(state) || return 1
+    [ "$s" = running ] && return 0
+    sleep 1
+  done
+  docker rm --force "$container" >/dev/null 2>&1
+  return 1
 }
 
-if checks "$@"; then
-  if docker image inspect "$image" >/dev/null 2>&1; then
-    container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$(printf '%.12s' "$pin")
-    if start "$container"; then
-      exec docker exec --interactive --workdir "/work/$(git rev-parse --show-prefix)" \
-        --env RUMBLESTRIP_HOST_ROOT="$root" --env RUMBLESTRIP_ROOT=/work \
-        --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=core.autocrlf --env GIT_CONFIG_VALUE_0="$(git config core.autocrlf || echo false)" \
-        "$container" rumblestrip "$@"
-    fi
-  else
+# WHY: when the container stopped under the call, docker's failure says
+# nothing of the check, which runs again on the host.
+in_image() {
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
     pull_later
+    return 1
   fi
-fi
+  start || return 1
+  code=0
+  docker exec --interactive --workdir "/work/$(git rev-parse --show-prefix)" \
+    --env RUMBLESTRIP_HOST_ROOT="$root" --env RUMBLESTRIP_ROOT=/work \
+    --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=core.autocrlf --env GIT_CONFIG_VALUE_0="$(git config core.autocrlf || echo false)" \
+    "$container" rumblestrip "$@" || code=$?
+  if [ "$code" != 0 ] && ! running; then
+    return 1
+  fi
+  exit "$code"
+}
+
+if checks "$@" && in_image "$@"; then :; fi
 exec go run "github.com/McReaper/rumblestrip-go/cmd/rumblestrip@$pin" "$@"

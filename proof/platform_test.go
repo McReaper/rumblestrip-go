@@ -331,15 +331,31 @@ func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
 }
 
 // WHY: plugin/bin/rumblestrip runs in a repository rumblestrip init set
-// up, with a go and a docker on the PATH that say how they were called.
+// up, with a go, a docker and a uname on the PATH that say how they were
+// called; docker keeps its one container's state in a file.
 type launcher struct{ dir, fakes, tmp, log, commit string }
 
 const fakeDocker = `#!/bin/sh
 echo "docker $*" >> "$FAKE_DOCKER_LOG"
+state=$FAKE_DOCKER_LOG.state
 case $1 in
-  image) [ "$FAKE_IMAGE" = present ] ;;
-  inspect) echo false ;;
-  exec) echo "docker $*" ;;
+  image) [ "${FAKE_IMAGE-}" = present ] ;;
+  inspect) cat "$state" 2>/dev/null ;;
+  run) echo running > "$state" ;;
+  rm) rm -f "$state" ;;
+  exec)
+    case ${FAKE_EXEC-} in
+      gone) rm -f "$state"; exit 1 ;;
+      refuse) echo "docker $*"; exit 2 ;;
+      *) echo "docker $*" ;;
+    esac ;;
+esac
+`
+
+const fakeUname = `#!/bin/sh
+case $1 in
+  -m) echo "${FAKE_ARCH:-x86_64}" ;;
+  -s) echo "${FAKE_OS:-Linux}" ;;
 esac
 `
 
@@ -355,18 +371,23 @@ func newLauncher(t *testing.T) launcher {
 		t.Fatal(err)
 	}
 	gitIn(t, l.dir, "init", "-q")
-	for name, script := range map[string]string{"go": "#!/bin/sh\necho \"go $*\"\n", "docker": fakeDocker} {
+	gitIn(t, l.dir, "add", "-A")
+	gitIn(t, l.dir, "commit", "-q", "-m", "init")
+	fakes := map[string]string{"go": "#!/bin/sh\necho \"go $*\"\n", "docker": fakeDocker, "uname": fakeUname}
+	for name, script := range fakes {
 		if err := os.WriteFile(filepath.Join(l.fakes, name), []byte(script), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		runIn(t, place{dir: l.fakes}, "chmod", "+x", name)
 	}
+	l.calls(t)
 	return l
 }
 
-// WHY: image is what the fake docker has: present, missing, or off, which
-// turns the image off as RUMBLESTRIP_DOCKER=0 does.
-func (l launcher) run(t *testing.T, image string, args ...string) string {
+// WHY: env sets the fakes: FAKE_IMAGE=present has the image pulled,
+// FAKE_EXEC says how docker exec ends, FAKE_OS and FAKE_ARCH what uname
+// says.
+func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
 	t.Helper()
 	path, err := filepath.Abs("../plugin/bin/rumblestrip")
 	if err != nil {
@@ -375,15 +396,30 @@ func (l launcher) run(t *testing.T, image string, args ...string) string {
 	script := `PATH="$(cd "$1" && pwd):$PATH"; l=$2; shift 2; exec "$l" "$@"`
 	cmd := exec.CommandContext(t.Context(), "sh", append([]string{"-c", script, "sh", filepath.ToSlash(l.fakes), filepath.ToSlash(path)}, args...)...)
 	cmd.Dir = l.dir
-	cmd.Env = append(os.Environ(), "FAKE_IMAGE="+image, "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "TMPDIR="+filepath.ToSlash(l.tmp))
-	if image == "off" {
-		cmd.Env = append(cmd.Env, "RUMBLESTRIP_DOCKER=0")
-	}
+	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "TMPDIR="+filepath.ToSlash(l.tmp))
+	cmd.Env = append(cmd.Env, strings.Fields(env)...)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("the launcher: %v\n%s", err, out)
+	if err == nil {
+		return string(out), 0
 	}
-	return string(out)
+	if code := exitCode(err); code > 0 {
+		return string(out), code
+	}
+	t.Fatalf("the launcher: %v\n%s", err, out)
+	return "", 0
+}
+
+// WHY: what docker was called with since the last look.
+func (l launcher) calls(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(l.log)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(l.log, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 // WHY: the image is pulled in the background, so the call that starts the
@@ -408,24 +444,64 @@ func (l launcher) logged(t *testing.T, want string) {
 func launcherRunsThePinnedVersion(t *testing.T) {
 	t.Helper()
 	l := newLauncher(t)
-	goRun := "go run github.com/McReaper/rumblestrip-go/cmd/rumblestrip@" + l.commit
+	goRun := "go run github.com/McReaper/rumblestrip-go/cmd/rumblestrip@" + l.commit + " "
 	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
-	if out := l.run(t, "missing", "check"); out != goRun+" check\n" {
-		t.Errorf("a check before the image is pulled ran %q, want %q", out, goRun+" check\n")
+	if out, _ := l.run(t, "", "check"); out != goRun+"check\n" {
+		t.Errorf("a check before the image is pulled ran %q, want %q", out, goRun+"check\n")
 	}
 	l.logged(t, "docker pull --quiet "+image)
-	out := l.run(t, "present", "hook", "stop")
+	l.calls(t)
+	launcherRunsChecksInTheImage(t, l, image)
+	worktree := l
+	worktree.dir = filepath.Join(t.TempDir(), "worktree")
+	gitIn(t, l.dir, "worktree", "add", "-q", worktree.dir)
+	for _, c := range []struct {
+		who  string
+		l    launcher
+		env  string
+		args []string
+	}{
+		{"pr, which needs the host's credentials,", l, "FAKE_IMAGE=present", []string{"pr", "stack"}},
+		{"RUMBLESTRIP_DOCKER=0", l, "FAKE_IMAGE=present RUMBLESTRIP_DOCKER=0", []string{"check"}},
+		{"an arm64 machine, which the image doesn't run on,", l, "FAKE_IMAGE=present FAKE_ARCH=arm64", []string{"check"}},
+		{"a linked worktree, whose git directory the container doesn't mount,", worktree, "FAKE_IMAGE=present", []string{"check"}},
+	} {
+		want := goRun + strings.Join(c.args, " ") + "\n"
+		if out, _ := c.l.run(t, c.env, c.args...); out != want {
+			t.Errorf("%s ran %q, want %q", c.who, out, want)
+		}
+	}
+}
+
+// WHY: the first check starts the repository's container, as the user but
+// on Windows; the next ones reuse it. A refusal comes back with its code,
+// and a check whose container stopped under it runs again on the host.
+func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
+	t.Helper()
+	out, _ := l.run(t, "FAKE_IMAGE=present", "hook", "stop")
 	container := regexp.MustCompile(` (rumblestrip-\d+-` + l.commit[:12] + `) rumblestrip hook stop\n$`).FindStringSubmatch(out)
 	if !strings.HasPrefix(out, "docker exec --interactive --workdir /work/ ") || !strings.Contains(out, " --env RUMBLESTRIP_ROOT=/work ") || container == nil {
 		t.Fatalf("a hook with the image pulled ran %q", out)
 	}
-	l.logged(t, "docker run --detach --rm --name "+container[1]+" --mount type=bind,source=")
-	l.logged(t, image+" sleep 86400")
-	if out := l.run(t, "present", "pr", "stack"); out != goRun+" pr stack\n" {
-		t.Errorf("pr, which needs the host's credentials, ran %q", out)
+	started := regexp.MustCompile(`docker run --detach --rm --init --name ` + container[1] + ` --mount type=bind,source=\S+,target=/work --volume rumblestrip-go:/go --user \d+:\d+ ` + regexp.QuoteMeta(image) + ` sleep 86400\n`)
+	if calls := l.calls(t); !started.MatchString(calls) {
+		t.Errorf("the first hook started no container as the user:\n%s", calls)
 	}
-	if out := l.run(t, "off", "check"); out != goRun+" check\n" {
-		t.Errorf("RUMBLESTRIP_DOCKER=0 ran %q", out)
+	out, _ = l.run(t, "FAKE_IMAGE=present", "check")
+	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || strings.Contains(calls, "docker run ") {
+		t.Errorf("a check with the container up ran %q, and docker:\n%s", out, calls)
+	}
+	if out, code := l.run(t, "FAKE_IMAGE=present FAKE_EXEC=refuse", "hook", "pre-tool"); code != 2 || strings.Contains(out, "go run") {
+		t.Errorf("a refusal in the image ended %d: %q", code, out)
+	}
+	goRun := "go run github.com/McReaper/rumblestrip-go/cmd/rumblestrip@" + l.commit + " hook stop\n"
+	if out, code := l.run(t, "FAKE_IMAGE=present FAKE_EXEC=gone", "hook", "stop"); code != 0 || out != goRun {
+		t.Errorf("a hook whose container stopped under it ran %q and ended %d, want %q", out, code, goRun)
+	}
+	l.calls(t)
+	out, _ = l.run(t, "FAKE_IMAGE=present FAKE_OS=MINGW64_NT-10.0-26200", "check")
+	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || !strings.Contains(calls, "docker run --detach ") || strings.Contains(calls, "--user") {
+		t.Errorf("on Windows, a check ran %q, and docker:\n%s", out, calls)
 	}
 }
 

@@ -78,7 +78,8 @@ jobs:
           code=0
           printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git push origin main"}}' "$app" |
             "$launcher" hook pre-tool 2> "$RUNNER_TEMP/refusal" || code=$?
-          test "$code" = 2 && grep -q "through a pull request only" "$RUNNER_TEMP/refusal"
+          test "$code" = 2
+          grep -q "through a pull request only" "$RUNNER_TEMP/refusal"
           # An edit named by its host path is linted in the image.
           printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s/internal/notes/internal/add/add.go"}}' "$app" "$app" |
             "$launcher" hook post-edit
