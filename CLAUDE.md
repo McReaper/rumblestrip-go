@@ -11,13 +11,14 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `gesture/` — what `rumblestrip hook pre-tool` refuses before the agent runs it.
 - `setup/` — `rumblestrip init`: the files an app keeps, its GitHub settings, the agent's App; `setup/files/` holds them, the app rulesets included.
 - `.github/workflows/rumblestrip-check.yml` and `rumblestrip-approval.yml` — the checks an app's workflows call: one job per check, the review sheet, Check, the merge; their header comments say how they run.
-- `plugin/` + `.claude-plugin/marketplace.json` — the Claude Code plugin apps turn on: skills, rules, hooks; `plugin/bin/rumblestrip` runs rumblestrip at the version the app's CI pins.
+- `plugin/` + `.claude-plugin/marketplace.json` — the Claude Code plugin apps turn on: skills, rules, hooks; `plugin/bin/rumblestrip` runs rumblestrip at the version the app's CI pins: its checks in the image of that commit when Docker runs, one container a repository, the hooks' host paths mapped to `/work`; otherwise, and for `pr`, `app` and `init`, through `go run`.
 - `pr/` — `rumblestrip pr create` and `pr stack`: an agent's pull request, its title as the check wants it, stacked on its base's.
 - `archtest/` — architecture rules over go/packages.
 - `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
 - `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `trial/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
 - `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rumblestrip.md` against the cases and `tools.txt`.
-- `tools.txt` — every tool's pinned version; CI installs exactly these.
+- `tools.txt` — every tool's pinned version; the image installs exactly these.
+- `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it; `.trivyignore.yaml` holds the findings that don't apply, each with why.
 
 ## Rules
 
@@ -33,5 +34,5 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 
 ## Commands
 
-- Everything: `go test ./...` (needs the tools in `tools.txt` on the PATH; zizmor through `ZIZMOR=<path>` if pip put it elsewhere). The race proof is Linux only.
+- Everything, in the image as CI runs it: `docker build -t rumblestrip .`, then `docker run --rm -v "$PWD:/work" rumblestrip go test ./...`. Outside it, `go test ./...` needs the tools in `tools.txt` on the PATH (zizmor through `ZIZMOR=<path>` if pip put it elsewhere). The race proof is Linux only.
 - One proof: `go test ./proof/ -run TestGuardReportsEveryCase`.

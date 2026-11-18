@@ -1,0 +1,6 @@
+# .git stays: Go stamps rumblestrip's version from it.
+*.exe
+*.test
+*.out
+/bin/
+/dist/
