@@ -85,10 +85,10 @@ jobs:
             "$launcher" hook post-edit
           docker ps --filter name=rumblestrip- --format '{{.Image}}' | grep -qx "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
 
-      # The gates block on what Rumblestrip can fix: an Ubuntu package with a
-      # fixed version, which the daily apt layer picks up, and anything
-      # critical. The rest, in the tools' own dependencies, goes to the
-      # Security tab, and clears with the tools' next releases.
+      # The gates block on a finding with a fixed version: an Ubuntu package,
+      # which the daily apt layer picks up, and anything critical. The rest
+      # goes to the Security tab: the tools' own dependencies clear with their
+      # next releases, and a finding with no fix yet has nothing to apply.
       - name: Scan the image, for the Security tab
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -117,7 +117,7 @@ jobs:
           ignore-unfixed: true
           skip-setup-trivy: true
           trivyignores: .trivyignore.yaml
-      - name: Scan the image, gate on anything critical
+      - name: Scan the image, gate on anything critical with a fix
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -125,6 +125,7 @@ jobs:
           format: table
           exit-code: "1"
           severity: CRITICAL
+          ignore-unfixed: true
           skip-setup-trivy: true
           trivyignores: .trivyignore.yaml
       # Publish pushes this very image: a second build could differ.
