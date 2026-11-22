@@ -16,7 +16,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git jq xz-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY go.mod tools.txt /pins/
-# WHY: GitHub's API refuses an address after 60 calls an hour without a token;
+# GitHub's API refuses an address after 60 calls an hour without a token;
 # CI passes its own, read-only, as a build secret no layer keeps.
 COPY --chmod=0755 <<'EOF' /usr/local/bin/release-asset
 #!/bin/sh
@@ -117,7 +117,7 @@ COPY --from=pwsh /usr/local/share/powershell /usr/local/share/powershell
 COPY --from=gotools /out/ /usr/local/bin/
 COPY --from=bintools /out/ /usr/local/bin/
 COPY --from=build /out/rumblestrip /usr/local/bin/rumblestrip
-# WHY: the image runs as whichever user owns the repository it's given (CI's
+# The image runs as whichever user owns the repository it's given (CI's
 # runner, the developer on Linux), so Go's caches and HOME take any user, and
 # git trusts a repository whatever its owner.
 ENV PATH=/usr/local/go/bin:/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
