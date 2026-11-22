@@ -24,22 +24,33 @@ jobs:
           fetch-depth: 0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # The image's Ubuntu layer runs again once a day, for Ubuntu's security
-      # fixes.
-      - name: Pick the apt refresh date
-        id: apt-refresh
+      # fixes, and main saves Go's caches once a day.
+      - name: Pick today's date
+        id: today
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - name: Build Rumblestrip's image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          build-args: APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+          build-args: APT_REFRESH=${{ steps.today.outputs.date }}
           secrets: github_token=${{ github.token }}
           load: true
           tags: rumblestrip:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Go's caches come from main: a pull request reads the latest and never
+      # saves its own, so they take room once a day, not once a pull request.
+      - name: Restore Go's caches from main
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/go
+          key: go-${{ steps.today.outputs.date }}
+          restore-keys: go-
       - name: Start the image on the repository
-        run: docker run --detach --name kit --user "$(id -u):$(id -g)" --volume "$GITHUB_WORKSPACE:/work" rumblestrip:ci sleep infinity
+        run: |
+          mkdir -p "$RUNNER_TEMP/go"
+          docker run --detach --name kit --user "$(id -u):$(id -g)" --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/go:/go" rumblestrip:ci sleep infinity
       - run: docker exec kit go vet ./...
       - name: Lint Rumblestrip with its own rules, for every target system
         run: |
@@ -60,6 +71,12 @@ jobs:
             actionlint
             zizmor --offline .github/workflows
             gitleaks git --no-banner --redact --config .gitleaks.toml .'
+      - name: Save Go's caches for the next runs
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/go
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
       # The plugin's launcher, with the real Docker, on an app made from the
       # template: the image it starts is the one just built, tagged as the
       # commit the app pins.
