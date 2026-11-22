@@ -1,13 +1,2 @@
 # Ignore a finding only with a statement saying why it doesn't apply.
-#
-# linux-libc-dev holds only the Linux kernel's headers, which gcc needs for
-# the -race tests. A container runs on its host's kernel, never on this
-# package, so the kernel's own vulnerabilities don't reach the image.
-vulnerabilities:
-  # Found in: linux-libc-dev 7.0.0-43.43, no fixed version yet
-  - id: CVE-2026-99287
-    statement: Not exploitable — kernel headers only; the container runs on its host's kernel.
-  - id: CVE-2026-99306
-    statement: Not exploitable — kernel headers only; the container runs on its host's kernel.
-  - id: CVE-2026-99310
-    statement: Not exploitable — kernel headers only; the container runs on its host's kernel.
+vulnerabilities: []

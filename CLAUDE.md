@@ -18,7 +18,7 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `trial/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
 - `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rumblestrip.md` against the cases and `tools.txt`.
 - `tools.txt` — every tool's pinned version; the image installs exactly these.
-- `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it; `.trivyignore.yaml` holds the findings that don't apply, each with why.
+- `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it on findings with a fix; `.trivyignore.yaml` holds those that don't apply, each with why.
 
 ## Rules
 
