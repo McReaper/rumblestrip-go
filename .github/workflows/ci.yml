@@ -105,9 +105,12 @@ jobs:
         with:
           sarif_file: trivy.sarif
           category: image
+      # The gates reuse the first scan's database and analysis: restoring the
+      # cache again would put an older copy over them.
       - name: Scan the image, gate on a fixable Ubuntu package
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          cache: false
           scan-type: image
           image-ref: rumblestrip:ci
           format: table
@@ -120,6 +123,7 @@ jobs:
       - name: Scan the image, gate on anything critical with a fix
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          cache: false
           scan-type: image
           image-ref: rumblestrip:ci
           format: table
