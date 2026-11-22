@@ -21,7 +21,7 @@ if [ -z "$pin" ]; then
 fi
 image=ghcr.io/mcreaper/rumblestrip:sha-$pin
 container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$(printf '%.12s' "$pin")
-# WHY: Git Bash rewrites an argument that looks like a POSIX path, the
+# Git Bash rewrites an argument that looks like a POSIX path, the
 # container's /work included.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
@@ -59,7 +59,7 @@ running() {
   [ "$(state)" = running ]
 }
 
-# WHY: --rm removes a container once it stops, so one that is there but not
+# --rm removes a container once it stops, so one that is there but not
 # running is another hook's, starting; one that never runs is removed, for
 # the next call to start afresh.
 start() {
@@ -79,7 +79,7 @@ start() {
   return 1
 }
 
-# WHY: when the container stopped under the call, docker's failure says
+# When the container stopped under the call, docker's failure says
 # nothing of the check, which runs again on the host.
 in_image() {
   if ! docker image inspect "$image" >/dev/null 2>&1; then
