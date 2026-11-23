@@ -6,8 +6,9 @@
 # With Docker, a check runs in Rumblestrip's image of that commit, which holds
 # every tool the checks run. One container a repository stays up for the day,
 # so a hook doesn't pay a container's start. The image is pulled in the
-# background the first time: until it's there, and without Docker, go run
-# builds rumblestrip once and caches it, and the tools come from the PATH.
+# background the first time: until it's there, and without Docker, rumblestrip
+# runs on the host, installed once for the pin in ~/.cache/rumblestrip, and the
+# tools come from the PATH.
 # RUMBLESTRIP_DOCKER=0 turns the image off.
 set -eu
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -99,4 +100,27 @@ in_image() {
 }
 
 if checks "$@" && in_image "$@"; then :; fi
-exec go run "github.com/McReaper/rumblestrip-go/cmd/rumblestrip@$pin" "$@"
+
+# On the host, rumblestrip is installed once for the pin and run itself: go
+# run would end every failure with 1, and Claude Code refuses a tool call only
+# on 2. On Windows, go takes the cache's path in Windows' form.
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/rumblestrip
+if command -v cygpath >/dev/null 2>&1; then
+  cache=$(cygpath -m "$cache")
+fi
+bin=$cache/$pin
+if [ ! -d "$bin" ]; then
+  mkdir -p "$cache"
+  tmp=$(mktemp -d "$cache/install.XXXXXX")
+  GOBIN=$tmp go install "github.com/McReaper/rumblestrip-go/cmd/rumblestrip@$pin" >&2 || {
+    rm -rf "$tmp"
+    exit 1
+  }
+  # Another hook may have installed it meanwhile: the first copy stays.
+  if [ -d "$bin" ]; then
+    rm -rf "$tmp"
+  else
+    mv "$tmp" "$bin"
+  fi
+fi
+exec "$bin/rumblestrip" "$@"

@@ -11,7 +11,7 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `gesture/` — what `rumblestrip hook pre-tool` refuses before the agent runs it.
 - `setup/` — `rumblestrip init`: the files an app keeps, its GitHub settings, the agent's App; `setup/files/` holds them, the app rulesets included.
 - `.github/workflows/rumblestrip-check.yml` and `rumblestrip-approval.yml` — the checks an app's workflows call: one job per check, the review sheet, Check, the merge; their header comments say how they run.
-- `plugin/` + `.claude-plugin/marketplace.json` — the Claude Code plugin apps turn on: skills, rules, hooks; `plugin/bin/rumblestrip` runs rumblestrip at the version the app's CI pins: its checks in the image of that commit when Docker runs, one container a repository, the hooks' host paths mapped to `/work`; otherwise, and for `pr`, `app` and `init`, through `go run`.
+- `plugin/` + `.claude-plugin/marketplace.json` — the Claude Code plugin apps turn on: skills, rules, hooks; `plugin/bin/rumblestrip` runs rumblestrip at the version the app's CI pins: its checks in the image of that commit when Docker runs, one container a repository, the hooks' host paths mapped to `/work`; otherwise, and for `pr`, `app` and `init`, on the host, installed once a pin in `~/.cache/rumblestrip`: `go run` would end a hook's refusal, exit code 2, with 1.
 - `pr/` — `rumblestrip pr create` and `pr stack`: an agent's pull request, its title as the check wants it, stacked on its base's.
 - `archtest/` — architecture rules over go/packages.
 - `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
