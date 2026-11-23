@@ -1,0 +1,2 @@
+# Ignore a finding only with a statement saying why it doesn't apply.
+vulnerabilities: []
