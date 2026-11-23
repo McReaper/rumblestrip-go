@@ -334,7 +334,7 @@ func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
 // called; docker keeps its one container's state and whether the image was
 // pulled in files, and go install writes a rumblestrip that says how it was
 // called and ends with FAKE_HOST_EXIT.
-type launcher struct{ dir, fakes, tmp, log, golog, commit string }
+type launcher struct{ dir, fakes, tmp, log, golog, commit, input string }
 
 const fakeGo = `#!/bin/sh
 echo "go $*" >> "$FAKE_GO_LOG"
@@ -402,8 +402,8 @@ func newLauncher(t *testing.T) launcher {
 // WHY: env sets the fakes: FAKE_DOCKER=down has Docker not running,
 // FAKE_RUN=fail its container fail to start, FAKE_EXEC says how docker exec
 // ends, FAKE_HOST_EXIT how the host's rumblestrip ends, FAKE_OS and
-// FAKE_ARCH what uname says; input is what the hook reads.
-func (l launcher) run(t *testing.T, env, input string, args ...string) (string, int) {
+// FAKE_ARCH what uname says.
+func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
 	t.Helper()
 	path, err := filepath.Abs("../plugin/bin/rumblestrip")
 	if err != nil {
@@ -412,7 +412,7 @@ func (l launcher) run(t *testing.T, env, input string, args ...string) (string, 
 	script := `PATH="$(cd "$1" && pwd):$PATH"; l=$2; shift 2; exec "$l" "$@"`
 	cmd := exec.CommandContext(t.Context(), "sh", append([]string{"-c", script, "sh", filepath.ToSlash(l.fakes), filepath.ToSlash(path)}, args...)...)
 	cmd.Dir = l.dir
-	cmd.Stdin = strings.NewReader(input)
+	cmd.Stdin = strings.NewReader(l.input)
 	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "FAKE_GO_LOG="+filepath.ToSlash(l.golog), "XDG_CACHE_HOME="+filepath.ToSlash(filepath.Join(l.tmp, "cache")))
 	cmd.Env = append(cmd.Env, strings.Fields(env)...)
 	out, err := cmd.CombinedOutput()
@@ -424,6 +424,12 @@ func (l launcher) run(t *testing.T, env, input string, args ...string) (string, 
 	}
 	t.Fatalf("the launcher: %v\n%s", err, out)
 	return "", 0
+}
+
+// WHY: a hook reads what Claude Code gives it on stdin.
+func (l launcher) given(input string) launcher {
+	l.input = input
+	return l
 }
 
 // WHY: what docker was called with since the last look.
@@ -462,7 +468,7 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
 	launcherRefusesUntilSetup(t, l)
 	for range 2 {
-		if out, code := l.run(t, "", "", "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
+		if out, code := l.run(t, "", "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
 			t.Errorf("setup ended %d: %q", code, out)
 		}
 	}
@@ -472,7 +478,7 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	if n := l.installs(t); n != 1 {
 		t.Errorf("go installed rumblestrip %d times for one pin, want once", n)
 	}
-	if out, code := l.run(t, "FAKE_HOST_EXIT=3", "", "pr", "stack"); code != 3 || out != "host rumblestrip pr stack\n" {
+	if out, code := l.run(t, "FAKE_HOST_EXIT=3", "pr", "stack"); code != 3 || out != "host rumblestrip pr stack\n" {
 		t.Errorf("pr, which needs the host's credentials, ran %q and ended %d", out, code)
 	}
 	launcherRunsChecksInTheImage(t, l, image)
@@ -517,7 +523,7 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 		{"a command in a linked worktree", worktree, "", push, []string{"hook", "pre-tool"}, 2, "can't reach a linked worktree's"},
 		{"setup in a linked worktree", worktree, "", "", []string{"setup"}, 1, "can't reach a linked worktree's"},
 	} {
-		out, code := c.l.run(t, c.env, c.input, c.args...)
+		out, code := c.l.given(c.input).run(t, c.env, c.args...)
 		if code != c.code || (c.want == "") != (out == "") || !strings.Contains(out, c.want) {
 			t.Errorf("before setup, %s ended %d, want %d: %q", c.who, code, c.code, out)
 		}
@@ -536,7 +542,7 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 // and says why.
 func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	t.Helper()
-	out, _ := l.run(t, "", "", "hook", "stop")
+	out, _ := l.run(t, "", "hook", "stop")
 	container := regexp.MustCompile(` (rumblestrip-\d+-` + l.commit[:12] + `) rumblestrip hook stop\n$`).FindStringSubmatch(out)
 	if !strings.HasPrefix(out, "docker exec --interactive --workdir /work/ ") || !strings.Contains(out, " --env RUMBLESTRIP_ROOT=/work ") || container == nil {
 		t.Fatalf("a hook with the image pulled ran %q", out)
@@ -545,23 +551,23 @@ func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	if calls := l.calls(t); !started.MatchString(calls) {
 		t.Errorf("the first hook started no container as the user:\n%s", calls)
 	}
-	out, _ = l.run(t, "", "", "check")
+	out, _ = l.run(t, "", "check")
 	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || strings.Contains(calls, "docker run ") {
 		t.Errorf("a check with the container up ran %q, and docker:\n%s", out, calls)
 	}
-	if out, code := l.run(t, "FAKE_EXEC=refuse", "", "hook", "pre-tool"); code != 2 || !strings.HasPrefix(out, "docker exec ") {
+	if out, code := l.run(t, "FAKE_EXEC=refuse", "hook", "pre-tool"); code != 2 || !strings.HasPrefix(out, "docker exec ") {
 		t.Errorf("a refusal in the image ended %d: %q", code, out)
 	}
 	for _, c := range []struct{ env, want string }{
 		{"FAKE_EXEC=gone", "rumblestrip: Rumblestrip's container stopped during the check: run it again.\n"},
 		{"FAKE_RUN=fail", "rumblestrip: Rumblestrip's container didn't start: no space left on device\n"},
 	} {
-		if out, code := l.run(t, c.env, "{}", "hook", "stop"); code != 2 || !strings.HasSuffix(out, c.want) {
+		if out, code := l.given("{}").run(t, c.env, "hook", "stop"); code != 2 || !strings.HasSuffix(out, c.want) {
 			t.Errorf("with %s, the stop hook ended %d: %q, want %q", c.env, code, out, c.want)
 		}
 	}
 	l.calls(t)
-	out, _ = l.run(t, "FAKE_OS=MINGW64_NT-10.0-26200", "", "check")
+	out, _ = l.run(t, "FAKE_OS=MINGW64_NT-10.0-26200", "check")
 	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || !strings.Contains(calls, "docker run --detach ") || strings.Contains(calls, "--user") {
 		t.Errorf("on Windows, a check ran %q, and docker:\n%s", out, calls)
 	}
