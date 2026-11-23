@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/McReaper/rumblestrip-go/check"
@@ -33,12 +34,42 @@ type hookInput struct {
 	} `json:"tool_input"`
 }
 
+// WHY: in Rumblestrip's image, plugin/bin/rumblestrip mounts the repository
+// at RUMBLESTRIP_ROOT, while Claude Code still gives the hook the host's
+// paths, under RUMBLESTRIP_HOST_ROOT.
 func readHookInput(in io.Reader) (hookInput, error) {
 	var h hookInput
 	if err := json.NewDecoder(in).Decode(&h); err != nil {
 		return h, fmt.Errorf("read the hook's input: %w", err)
 	}
+	if host, root := os.Getenv("RUMBLESTRIP_HOST_ROOT"), os.Getenv("RUMBLESTRIP_ROOT"); host != "" && root != "" {
+		m := hostPaths{host: host, root: root}
+		h.Cwd = m.inImage(h.Cwd)
+		h.ToolInput.FilePath = m.inImage(h.ToolInput.FilePath)
+	}
 	return h, nil
+}
+
+type hostPaths struct{ host, root string }
+
+var gitBashDrive = regexp.MustCompile(`^/([a-zA-Z])(/|$)`)
+
+// WHY: Windows spells a path with backslashes, either case of its drive
+// letter, or Git Bash's /c/; a path outside the repository stays as given.
+func (m hostPaths) inImage(p string) string {
+	host := strings.TrimSuffix(strings.ReplaceAll(m.host, `\`, "/"), "/")
+	q := strings.ReplaceAll(p, `\`, "/")
+	windows := len(host) >= 2 && host[1] == ':'
+	if g := gitBashDrive.FindStringSubmatch(q); windows && g != nil {
+		q = g[1] + ":/" + q[len(g[0]):]
+	}
+	if len(q) < len(host) || len(q) > len(host) && q[len(host)] != '/' {
+		return p
+	}
+	if prefix := q[:len(host)]; prefix == host || windows && strings.EqualFold(prefix, host) {
+		return m.root + q[len(host):]
+	}
+	return p
 }
 
 func hookCommand() *cobra.Command {

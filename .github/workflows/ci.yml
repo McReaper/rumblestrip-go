@@ -60,6 +60,30 @@ jobs:
             actionlint
             zizmor --offline .github/workflows
             gitleaks git --no-banner --redact --config .gitleaks.toml .'
+      # The plugin's launcher, with the real Docker, on an app made from the
+      # template: the image it starts is the one just built, tagged as the
+      # commit the app pins.
+      - name: Run the plugin's hooks in the image, as on the agent's machine
+        run: |
+          set -eu
+          app="$RUNNER_TEMP/app"
+          cp -R template "$app"
+          launcher="$GITHUB_WORKSPACE/plugin/bin/rumblestrip"
+          cd "$app"
+          git init -q
+          mkdir -p .github/workflows
+          echo "    uses: McReaper/rumblestrip-go/.github/workflows/rumblestrip-check.yml@$GITHUB_SHA" > .github/workflows/rumblestrip.yml
+          docker tag rumblestrip:ci "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
+          # A refusal comes back through docker exec: its exit code and its words.
+          code=0
+          printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git push origin main"}}' "$app" |
+            "$launcher" hook pre-tool 2> "$RUNNER_TEMP/refusal" || code=$?
+          test "$code" = 2
+          grep -q "through a pull request only" "$RUNNER_TEMP/refusal"
+          # An edit named by its host path is linted in the image.
+          printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s/internal/notes/internal/add/add.go"}}' "$app" "$app" |
+            "$launcher" hook post-edit
+          docker ps --filter name=rumblestrip- --format '{{.Image}}' | grep -qx "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
 
       # The gates block on a finding with a fixed version: an Ubuntu package,
       # which the daily apt layer picks up, and anything critical. The rest
