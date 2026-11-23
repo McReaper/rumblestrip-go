@@ -1,15 +1,15 @@
 #!/bin/sh
 # rumblestrip, at the version the repository pins: the commit its
-# .github/workflows/rumblestrip.yml calls rumblestrip-check.yml at, so the agent's checks
-# are the merge check's.
+# .github/workflows/rumblestrip.yml calls rumblestrip-check.yml at, so the
+# agent's checks are the merge check's.
 #
-# With Docker, a check runs in Rumblestrip's image of that commit, which holds
-# every tool the checks run. One container a repository stays up for the day,
-# so a hook doesn't pay a container's start. The image is pulled in the
-# background the first time: until it's there, and without Docker, rumblestrip
-# runs on the host, installed once for the pin in ~/.cache/rumblestrip, and the
-# tools come from the PATH.
-# RUMBLESTRIP_DOCKER=0 turns the image off.
+# The checks run in Rumblestrip's image of that commit, which holds every
+# tool at the version CI runs. One container a repository stays up for the
+# day, so a hook doesn't pay a container's start. pr, app and init need the
+# host's credentials: they run on the host, from the binary rumblestrip setup
+# installs for the pin in ~/.cache/rumblestrip. Until setup has pulled the
+# pin's image, the hooks refuse every command and edit but rumblestrip setup:
+# the agent never works unchecked.
 set -eu
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "rumblestrip: not in a git repository" >&2
@@ -20,36 +20,62 @@ if [ -z "$pin" ]; then
   echo "rumblestrip: $root/.github/workflows/rumblestrip.yml pins no Rumblestrip version: run rumblestrip init" >&2
   exit 2
 fi
+short=$(printf '%.12s' "$pin")
 image=ghcr.io/mcreaper/rumblestrip:sha-$pin
-container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$(printf '%.12s' "$pin")
+container=rumblestrip-$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)-$short
+cmd=${1-} sub=${2-}
 # Git Bash rewrites an argument that looks like a POSIX path, the
 # container's /work included.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
-# The checks run in the image; pr, app and init need the host's credentials.
-# The image is x86-64's. It mounts the repository alone, and a linked
-# worktree's or a submodule's git directory lies outside it.
-checks() {
-  case ${1-} in
-    check | docs | guard | hook | mutate | review | spec | sweep) ;;
-    *) return 1 ;;
-  esac
+# On Windows, go takes the cache's path in Windows' form.
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/rumblestrip
+if command -v cygpath >/dev/null 2>&1; then
+  cache=$(cygpath -m "$cache")
+fi
+bin=$cache/$pin
+
+# Why the image can't run here, or nothing: it is x86-64's, and it mounts the
+# repository alone, so a linked worktree's or a submodule's git directory
+# lies outside it.
+unfit() {
   case $(uname -m) in
     x86_64 | amd64) ;;
-    *) return 1 ;;
+    *)
+      echo "Rumblestrip's checks run in its image, built for x86-64 only, and this machine is $(uname -m)."
+      return
+      ;;
   esac
-  [ -d "$root/.git" ] && [ "${RUMBLESTRIP_DOCKER-}" != 0 ] && command -v docker >/dev/null 2>&1
+  if [ ! -d "$root/.git" ]; then
+    echo "Rumblestrip's checks run in its image, which can't reach a linked worktree's or a submodule's git directory: work in the repository's own checkout."
+  elif ! command -v docker >/dev/null 2>&1; then
+    echo "Rumblestrip's checks run in its image, through Docker, which isn't installed: ask the user to install it, then run rumblestrip setup."
+  fi
 }
 
-# One pull at a time; after a failure, none for an hour.
-pull_later() {
-  lock=${TMPDIR:-/tmp}/rumblestrip-pull-$pin
-  if [ -d "$lock" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +60 2>/dev/null)" ]; then
-    return 0
-  fi
-  rm -rf "$lock"
-  mkdir "$lock" 2>/dev/null || return 0
-  (docker pull --quiet "$image" && rmdir "$lock") </dev/null >/dev/null 2>&1 &
+# Claude Code refuses a tool call, or keeps the agent going, on exit code 2,
+# and shows it what the hook wrote to stderr; at a session's start, it shows
+# the agent what the hook printed. rumblestrip setup is the way out, and the
+# agent stops on its second try, as rumblestrip's own stop hook lets it.
+refuse() {
+  case "$cmd $sub" in
+    "hook session-start")
+      echo "$1 Until then, Rumblestrip refuses every command and edit but rumblestrip setup."
+      exit 0
+      ;;
+    "hook pre-tool")
+      if tr -d '\n' | grep -q '"command" *: *"rumblestrip setup"'; then
+        exit 0
+      fi
+      ;;
+    "hook stop")
+      if tr -d '\n' | grep -q '"stop_hook_active" *: *true'; then
+        exit 0
+      fi
+      ;;
+  esac
+  echo "rumblestrip: $1" >&2
+  exit 2
 }
 
 state() {
@@ -70,7 +96,9 @@ start() {
     MINGW* | MSYS* | CYGWIN*) ;;
     *) set -- "$@" --user "$(id -u):$(id -g)" ;;
   esac
-  docker run "$@" "$image" sleep 86400 >/dev/null 2>&1 && return 0
+  if failed=$(docker run "$@" "$image" sleep 86400 2>&1 >/dev/null); then
+    return 0
+  fi
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     s=$(state) || return 1
     [ "$s" = running ] && return 0
@@ -80,47 +108,76 @@ start() {
   return 1
 }
 
-# When the container stopped under the call, docker's failure says
-# nothing of the check, which runs again on the host.
 in_image() {
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
-    pull_later
-    return 1
+  why=$(unfit)
+  if [ -z "$why" ] && ! docker image inspect "$image" >/dev/null 2>&1; then
+    if docker version >/dev/null 2>&1; then
+      why="Rumblestrip's image for the version this repository pins, $short, isn't on this machine: run rumblestrip setup, which pulls it."
+    else
+      why="Docker isn't running: ask the user to start it."
+    fi
   fi
-  start || return 1
+  if [ -n "$why" ]; then
+    refuse "$why"
+  fi
+  start || refuse "Rumblestrip's container didn't start: ${failed:-docker gave no reason}"
   code=0
   docker exec --interactive --workdir "/work/$(git rev-parse --show-prefix)" \
     --env RUMBLESTRIP_HOST_ROOT="$root" --env RUMBLESTRIP_ROOT=/work \
     --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=core.autocrlf --env GIT_CONFIG_VALUE_0="$(git config core.autocrlf || echo false)" \
     "$container" rumblestrip "$@" || code=$?
   if [ "$code" != 0 ] && ! running; then
-    return 1
+    refuse "Rumblestrip's container stopped during the check: run it again."
   fi
   exit "$code"
 }
 
-if checks "$@" && in_image "$@"; then :; fi
-
-# On the host, rumblestrip is installed once for the pin and run itself: go
-# run would end every failure with 1, and Claude Code refuses a tool call only
-# on 2. On Windows, go takes the cache's path in Windows' form.
-cache=${XDG_CACHE_HOME:-$HOME/.cache}/rumblestrip
-if command -v cygpath >/dev/null 2>&1; then
-  cache=$(cygpath -m "$cache")
-fi
-bin=$cache/$pin
-if [ ! -d "$bin" ]; then
+# The pin's binary goes into a directory of its own, moved in place once
+# whole, so a hook racing the first install keeps the first copy.
+install_pin() {
+  if [ -d "$bin" ]; then
+    return 0
+  fi
+  if ! command -v go >/dev/null 2>&1; then
+    echo "rumblestrip: pr, app and init run on the host, through Go, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
+    exit 1
+  fi
   mkdir -p "$cache"
   tmp=$(mktemp -d "$cache/install.XXXXXX")
   GOBIN=$tmp go install "github.com/McReaper/rumblestrip-go/cmd/rumblestrip@$pin" >&2 || {
     rm -rf "$tmp"
     exit 1
   }
-  # Another hook may have installed it meanwhile: the first copy stays.
   if [ -d "$bin" ]; then
     rm -rf "$tmp"
   else
     mv "$tmp" "$bin"
   fi
+}
+
+setup() {
+  why=$(unfit)
+  if [ -z "$why" ] && ! docker version >/dev/null 2>&1; then
+    why="Docker isn't running: ask the user to start it, then run rumblestrip setup again."
+  fi
+  if [ -n "$why" ]; then
+    echo "rumblestrip: $why" >&2
+    exit 1
+  fi
+  docker pull "$image"
+  install_pin
+  echo "Rumblestrip $short is set up: its checks run in $image."
+}
+
+case $cmd in
+  check | docs | guard | hook | mutate | review | spec | sweep) in_image "$@" ;;
+  setup)
+    setup
+    exit 0
+    ;;
+esac
+if [ ! -d "$bin" ]; then
+  echo "rumblestrip: $short isn't installed on this machine: run rumblestrip setup" >&2
+  exit 1
 fi
 exec "$bin/rumblestrip" "$@"

@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/McReaper/rumblestrip-go/guard"
 	"github.com/McReaper/rumblestrip-go/reread"
@@ -332,9 +331,9 @@ func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
 
 // WHY: plugin/bin/rumblestrip runs in a repository rumblestrip init set
 // up, with a go, a docker and a uname on the PATH that say how they were
-// called; docker keeps its one container's state in a file, and go install
-// writes a rumblestrip that says how it was called and ends with
-// FAKE_HOST_EXIT.
+// called; docker keeps its one container's state and whether the image was
+// pulled in files, and go install writes a rumblestrip that says how it was
+// called and ends with FAKE_HOST_EXIT.
 type launcher struct{ dir, fakes, tmp, log, golog, commit string }
 
 const fakeGo = `#!/bin/sh
@@ -345,11 +344,18 @@ chmod +x "$GOBIN/rumblestrip"
 
 const fakeDocker = `#!/bin/sh
 echo "docker $*" >> "$FAKE_DOCKER_LOG"
+[ "${FAKE_DOCKER-}" != down ] || exit 1
 state=$FAKE_DOCKER_LOG.state
 case $1 in
-  image) [ "${FAKE_IMAGE-}" = present ] ;;
+  image) [ -e "$FAKE_DOCKER_LOG.image" ] ;;
+  pull) touch "$FAKE_DOCKER_LOG.image" ;;
   inspect) cat "$state" 2>/dev/null ;;
-  run) echo running > "$state" ;;
+  run)
+    if [ "${FAKE_RUN-}" = fail ]; then
+      echo "no space left on device" >&2
+      exit 125
+    fi
+    echo running > "$state" ;;
   rm) rm -f "$state" ;;
   exec)
     case ${FAKE_EXEC-} in
@@ -393,10 +399,11 @@ func newLauncher(t *testing.T) launcher {
 	return l
 }
 
-// WHY: env sets the fakes: FAKE_IMAGE=present has the image pulled,
-// FAKE_EXEC says how docker exec ends, FAKE_HOST_EXIT how the host's
-// rumblestrip ends, FAKE_OS and FAKE_ARCH what uname says.
-func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
+// WHY: env sets the fakes: FAKE_DOCKER=down has Docker not running,
+// FAKE_RUN=fail its container fail to start, FAKE_EXEC says how docker exec
+// ends, FAKE_HOST_EXIT how the host's rumblestrip ends, FAKE_OS and
+// FAKE_ARCH what uname says; input is what the hook reads.
+func (l launcher) run(t *testing.T, env, input string, args ...string) (string, int) {
 	t.Helper()
 	path, err := filepath.Abs("../plugin/bin/rumblestrip")
 	if err != nil {
@@ -405,7 +412,8 @@ func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
 	script := `PATH="$(cd "$1" && pwd):$PATH"; l=$2; shift 2; exec "$l" "$@"`
 	cmd := exec.CommandContext(t.Context(), "sh", append([]string{"-c", script, "sh", filepath.ToSlash(l.fakes), filepath.ToSlash(path)}, args...)...)
 	cmd.Dir = l.dir
-	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "FAKE_GO_LOG="+filepath.ToSlash(l.golog), "TMPDIR="+filepath.ToSlash(l.tmp), "XDG_CACHE_HOME="+filepath.ToSlash(filepath.Join(l.tmp, "cache")))
+	cmd.Stdin = strings.NewReader(input)
+	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "FAKE_GO_LOG="+filepath.ToSlash(l.golog), "XDG_CACHE_HOME="+filepath.ToSlash(filepath.Join(l.tmp, "cache")))
 	cmd.Env = append(cmd.Env, strings.Fields(env)...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -441,70 +449,94 @@ func (l launcher) installs(t *testing.T) int {
 	return strings.Count(string(data), "go install github.com/McReaper/rumblestrip-go/cmd/rumblestrip@"+l.commit+"\n")
 }
 
-// WHY: the image is pulled in the background, so the call that starts the
-// pull returns first.
-func (l launcher) logged(t *testing.T, want string) {
-	t.Helper()
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		if data, err := os.ReadFile(l.log); err == nil && strings.Contains(string(data), want) {
-			return
-		}
-	}
-	data, err := os.ReadFile(l.log)
-	t.Errorf("docker was never called with %q: %v\n%s", want, err, data)
-}
-
 // WHY: the plugin's hooks run rumblestrip at the commit the repository's
 // workflow pins, so the agent's checks are the merge check's; a launcher
-// that misreads the pin runs nothing, and every hook fails. With Docker, a
-// check runs in the image of that commit, which holds every tool; until the
-// image is pulled, and for a command that needs the host's credentials,
-// rumblestrip runs on the host, installed once for the pin; its exit code is
-// the hook's, since Claude Code refuses a tool call on 2 only.
+// that misreads the pin runs nothing, and every hook fails. The checks run
+// in the image of that commit, which holds every tool at CI's versions, and
+// pr on the host, which holds the credentials; rumblestrip setup pulls the
+// one and installs the other, once for the pin. The host's exit code is the
+// command's.
 func launcherRunsThePinnedVersion(t *testing.T) {
 	t.Helper()
 	l := newLauncher(t)
-	host := "host rumblestrip "
 	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
-	if out, _ := l.run(t, "", "check"); out != host+"check\n" {
-		t.Errorf("a check before the image is pulled ran %q, want %q", out, host+"check\n")
-	}
-	l.logged(t, "docker pull --quiet "+image)
-	l.calls(t)
-	launcherRunsChecksInTheImage(t, l, image)
-	worktree := l
-	worktree.dir = filepath.Join(t.TempDir(), "worktree")
-	gitIn(t, l.dir, "worktree", "add", "-q", worktree.dir)
-	for _, c := range []struct {
-		who  string
-		l    launcher
-		env  string
-		args []string
-	}{
-		{"pr, which needs the host's credentials,", l, "FAKE_IMAGE=present", []string{"pr", "stack"}},
-		{"RUMBLESTRIP_DOCKER=0", l, "FAKE_IMAGE=present RUMBLESTRIP_DOCKER=0", []string{"check"}},
-		{"an arm64 machine, which the image doesn't run on,", l, "FAKE_IMAGE=present FAKE_ARCH=arm64", []string{"check"}},
-		{"a linked worktree, whose git directory the container doesn't mount,", worktree, "FAKE_IMAGE=present", []string{"check"}},
-	} {
-		want := host + strings.Join(c.args, " ") + "\n"
-		if out, _ := c.l.run(t, c.env, c.args...); out != want {
-			t.Errorf("%s ran %q, want %q", c.who, out, want)
+	launcherRefusesUntilSetup(t, l)
+	for range 2 {
+		if out, code := l.run(t, "", "", "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
+			t.Errorf("setup ended %d: %q", code, out)
 		}
 	}
-	if out, code := l.run(t, "RUMBLESTRIP_DOCKER=0 FAKE_HOST_EXIT=2", "hook", "pre-tool"); code != 2 || out != host+"hook pre-tool\n" {
-		t.Errorf("a refusal on the host ended %d: %q; Claude Code refuses a tool call on 2 only", code, out)
+	if calls := l.calls(t); !strings.Contains(calls, "docker pull "+image+"\n") {
+		t.Errorf("setup pulled no image:\n%s", calls)
 	}
 	if n := l.installs(t); n != 1 {
 		t.Errorf("go installed rumblestrip %d times for one pin, want once", n)
 	}
+	if out, code := l.run(t, "FAKE_HOST_EXIT=3", "", "pr", "stack"); code != 3 || out != "host rumblestrip pr stack\n" {
+		t.Errorf("pr, which needs the host's credentials, ran %q and ended %d", out, code)
+	}
+	launcherRunsChecksInTheImage(t, l, image)
+}
+
+// WHY: until rumblestrip setup has pulled the pin's image, the agent never
+// works unchecked: every hook refuses with exit code 2, the one Claude Code
+// blocks on, but on setup itself, the agent's second try to stop, and a
+// session's start, which tells the agent why; setup refuses where the image
+// can't run. Nothing is pulled or installed behind the user's back.
+func launcherRefusesUntilSetup(t *testing.T, l launcher) {
+	t.Helper()
+	bash := func(command string) string {
+		return `{"tool_name":"Bash","tool_input":{"command":"` + command + `"}}`
+	}
+	push := bash("git push origin main")
+	pull := "run rumblestrip setup, which pulls it"
+	worktree := l
+	worktree.dir = filepath.Join(t.TempDir(), "worktree")
+	gitIn(t, l.dir, "worktree", "add", "-q", worktree.dir)
+	for _, c := range []struct {
+		who   string
+		l     launcher
+		env   string
+		input string
+		args  []string
+		code  int
+		want  string
+	}{
+		{"a command", l, "", push, []string{"hook", "pre-tool"}, 2, pull},
+		{"rumblestrip setup", l, "", bash("rumblestrip setup"), []string{"hook", "pre-tool"}, 0, ""},
+		{"rumblestrip setup and a push", l, "", bash("rumblestrip setup; git push origin main"), []string{"hook", "pre-tool"}, 2, pull},
+		{"an edit", l, "", editOf(t, filepath.Join(l.dir, "main.go")), []string{"hook", "post-edit"}, 2, pull},
+		{"the agent's first try to stop", l, "", `{"stop_hook_active":false}`, []string{"hook", "stop"}, 2, pull},
+		{"its second try", l, "", `{"stop_hook_active": true}`, []string{"hook", "stop"}, 0, ""},
+		{"a session's start", l, "", "{}", []string{"hook", "session-start"}, 0, "Until then, Rumblestrip refuses every command and edit but rumblestrip setup."},
+		{"pr", l, "", "", []string{"pr", "stack"}, 1, "isn't installed on this machine: run rumblestrip setup"},
+		{"a command, Docker not running,", l, "FAKE_DOCKER=down", push, []string{"hook", "pre-tool"}, 2, "Docker isn't running"},
+		{"setup, Docker not running,", l, "FAKE_DOCKER=down", "", []string{"setup"}, 1, "Docker isn't running"},
+		{"a command on an arm64 machine", l, "FAKE_ARCH=arm64", push, []string{"hook", "pre-tool"}, 2, "built for x86-64 only, and this machine is arm64"},
+		{"setup on an arm64 machine", l, "FAKE_ARCH=arm64", "", []string{"setup"}, 1, "built for x86-64 only"},
+		{"a command in a linked worktree", worktree, "", push, []string{"hook", "pre-tool"}, 2, "can't reach a linked worktree's"},
+		{"setup in a linked worktree", worktree, "", "", []string{"setup"}, 1, "can't reach a linked worktree's"},
+	} {
+		out, code := c.l.run(t, c.env, c.input, c.args...)
+		if code != c.code || (c.want == "") != (out == "") || !strings.Contains(out, c.want) {
+			t.Errorf("before setup, %s ended %d, want %d: %q", c.who, code, c.code, out)
+		}
+	}
+	if calls := l.calls(t); strings.Contains(calls, "docker pull") || strings.Contains(calls, "docker run") {
+		t.Errorf("before setup, the hooks called:\n%s", calls)
+	}
+	if n := l.installs(t); n != 0 {
+		t.Errorf("before setup, go installed rumblestrip %d times", n)
+	}
 }
 
 // WHY: the first check starts the repository's container, as the user but
-// on Windows; the next ones reuse it. A refusal comes back with its code,
-// and a check whose container stopped under it runs again on the host.
+// on Windows; the next ones reuse it. A refusal comes back with its code;
+// a check whose container stopped under it, or never started, is refused,
+// and says why.
 func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	t.Helper()
-	out, _ := l.run(t, "FAKE_IMAGE=present", "hook", "stop")
+	out, _ := l.run(t, "", "", "hook", "stop")
 	container := regexp.MustCompile(` (rumblestrip-\d+-` + l.commit[:12] + `) rumblestrip hook stop\n$`).FindStringSubmatch(out)
 	if !strings.HasPrefix(out, "docker exec --interactive --workdir /work/ ") || !strings.Contains(out, " --env RUMBLESTRIP_ROOT=/work ") || container == nil {
 		t.Fatalf("a hook with the image pulled ran %q", out)
@@ -513,19 +545,23 @@ func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	if calls := l.calls(t); !started.MatchString(calls) {
 		t.Errorf("the first hook started no container as the user:\n%s", calls)
 	}
-	out, _ = l.run(t, "FAKE_IMAGE=present", "check")
+	out, _ = l.run(t, "", "", "check")
 	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || strings.Contains(calls, "docker run ") {
 		t.Errorf("a check with the container up ran %q, and docker:\n%s", out, calls)
 	}
-	if out, code := l.run(t, "FAKE_IMAGE=present FAKE_EXEC=refuse", "hook", "pre-tool"); code != 2 || strings.Contains(out, "host rumblestrip") {
+	if out, code := l.run(t, "FAKE_EXEC=refuse", "", "hook", "pre-tool"); code != 2 || !strings.HasPrefix(out, "docker exec ") {
 		t.Errorf("a refusal in the image ended %d: %q", code, out)
 	}
-	host := "host rumblestrip hook stop\n"
-	if out, code := l.run(t, "FAKE_IMAGE=present FAKE_EXEC=gone", "hook", "stop"); code != 0 || out != host {
-		t.Errorf("a hook whose container stopped under it ran %q and ended %d, want %q", out, code, host)
+	for _, c := range []struct{ env, want string }{
+		{"FAKE_EXEC=gone", "rumblestrip: Rumblestrip's container stopped during the check: run it again.\n"},
+		{"FAKE_RUN=fail", "rumblestrip: Rumblestrip's container didn't start: no space left on device\n"},
+	} {
+		if out, code := l.run(t, c.env, "{}", "hook", "stop"); code != 2 || !strings.HasSuffix(out, c.want) {
+			t.Errorf("with %s, the stop hook ended %d: %q, want %q", c.env, code, out, c.want)
+		}
 	}
 	l.calls(t)
-	out, _ = l.run(t, "FAKE_IMAGE=present FAKE_OS=MINGW64_NT-10.0-26200", "check")
+	out, _ = l.run(t, "FAKE_OS=MINGW64_NT-10.0-26200", "", "check")
 	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || !strings.Contains(calls, "docker run --detach ") || strings.Contains(calls, "--user") {
 		t.Errorf("on Windows, a check ran %q, and docker:\n%s", out, calls)
 	}

@@ -90,6 +90,13 @@ jobs:
           git init -q
           mkdir -p .github/workflows
           echo "    uses: McReaper/rumblestrip-go/.github/workflows/rumblestrip-check.yml@$GITHUB_SHA" > .github/workflows/rumblestrip.yml
+          # Until the pin's image is on the machine, a hook refuses and says
+          # how to set it up.
+          code=0
+          printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"go test ./..."}}' "$app" |
+            "$launcher" hook pre-tool 2> "$RUNNER_TEMP/refusal" || code=$?
+          test "$code" = 2
+          grep -q "run rumblestrip setup" "$RUNNER_TEMP/refusal"
           docker tag rumblestrip:ci "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
           # A refusal comes back through docker exec: its exit code and its words.
           code=0
