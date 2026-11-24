@@ -38,6 +38,7 @@ func newAPI() *fakeAPI {
 		"GET repos/{owner}/{repo}":                                       `{"default_branch": "main", "owner": {"login": "octo"}}`,
 		"GET repos/{owner}/{repo}/pulls?head=octo%3Aspec%2Fx&state=open": `[{"number": 4}]`,
 		"POST repos/{owner}/{repo}/pulls":                                `{"number": 5, "html_url": "https://github.com/octo/app/pull/5"}`,
+		"GET repos/{owner}/{repo}/pulls/4":                               `{"number": 4, "stack": null}`,
 		"POST repos/{owner}/{repo}/stacks":                               `{}`,
 	}}
 }
@@ -68,6 +69,32 @@ func TestAPullRequestOnAnotherBranchIsStackedOnThatBranchsPullRequest(t *testing
 	}
 	if last := api.calls[len(api.calls)-1]; last != `POST repos/{owner}/{repo}/stacks @2026-03-10 {"pull_requests":[4,5]}` {
 		t.Errorf("the last call is %q, want the stack of #4 and #5", last)
+	}
+}
+
+// WHY: a third pull request goes on a base that is already in a stack, and
+// GitHub refuses to put that base in a second one.
+func TestAPullRequestOnAStacksTopJoinsThatStack(t *testing.T) {
+	api := newAPI()
+	api.reply["GET repos/{owner}/{repo}/pulls/4"] = `{"number": 4, "stack": {"number": 63, "position": 2, "size": 2}}`
+	got, err := pr.Open(t.Context(), api, pr.Options{Head: "feat/x", Base: "spec/x", Title: "feat(notes): a blank title is refused"})
+	if err != nil || got.StackedOn != 4 {
+		t.Fatalf("Open = %+v, %v", got, err)
+	}
+	if last := api.calls[len(api.calls)-1]; last != `POST repos/{owner}/{repo}/stacks/63/add @2026-03-10 {"pull_requests":[5]}` {
+		t.Errorf("the last call is %q, want #5 added to stack 63", last)
+	}
+}
+
+func TestAPullRequestOnTheMiddleOfAStackIsNotStacked(t *testing.T) {
+	api := newAPI()
+	api.reply["GET repos/{owner}/{repo}/pulls/4"] = `{"number": 4, "stack": {"number": 63, "position": 1, "size": 2}}`
+	got, err := pr.Open(t.Context(), api, pr.Options{Head: "feat/x", Base: "spec/x", Title: "feat(notes): a blank title is refused"})
+	if err == nil || got.Number != 5 || !strings.Contains(err.Error(), "#4 is not the top of stack 63, and a stack is one line") {
+		t.Errorf("Open = %+v, %v", got, err)
+	}
+	if last := api.calls[len(api.calls)-1]; strings.Contains(last, "/stacks") {
+		t.Errorf("it stacked anyway: %s", last)
 	}
 }
 

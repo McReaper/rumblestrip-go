@@ -188,12 +188,31 @@ func (g github) create(ctx context.Context, o Options) (Opened, error) {
 	return Opened{Number: created.Number, URL: created.HTMLURL}, err
 }
 
+// WHY: GitHub refuses to put a pull request in two stacks, so when below
+// is in one already, above joins it rather than starting another.
 func (g github) stack(ctx context.Context, below, above int) error {
-	body, err := json.Marshal(map[string][]int{"pull_requests": {below, above}})
+	var pull struct {
+		Stack *struct {
+			Number   int `json:"number"`
+			Position int `json:"position"`
+			Size     int `json:"size"`
+		} `json:"stack"`
+	}
+	if err := g.call(ctx, ghapi.Request{Method: "GET", Path: fmt.Sprintf("repos/{owner}/{repo}/pulls/%d", below), Version: stacksVersion}, &pull); err != nil {
+		return err
+	}
+	path, prs := "repos/{owner}/{repo}/stacks", []int{below, above}
+	if s := pull.Stack; s != nil {
+		if s.Position != s.Size {
+			return fmt.Errorf("pr: #%d is not the top of stack %d, and a stack is one line: open this one on the top pull request's branch", below, s.Number)
+		}
+		path, prs = fmt.Sprintf("repos/{owner}/{repo}/stacks/%d/add", s.Number), []int{above}
+	}
+	body, err := json.Marshal(map[string][]int{"pull_requests": prs})
 	if err != nil {
 		return fmt.Errorf("pr: %w", err)
 	}
-	_, err = g.api.Call(ctx, ghapi.Request{Method: "POST", Path: "repos/{owner}/{repo}/stacks", Version: stacksVersion, Body: body})
+	_, err = g.api.Call(ctx, ghapi.Request{Method: "POST", Path: path, Version: stacksVersion, Body: body})
 	return err
 }
 
