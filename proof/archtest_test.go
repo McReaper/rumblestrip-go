@@ -3,7 +3,7 @@ package proof_test
 import (
 	"testing"
 
-	"github.com/McReaper/rumblestrip-go/archtest"
+	"github.com/McReaper/rumblestrip-go/internal/archtest"
 )
 
 const archTool = "archtest/"

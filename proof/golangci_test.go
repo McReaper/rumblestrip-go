@@ -38,7 +38,7 @@ type golangciIssue struct {
 
 func runGolangci(t *testing.T, dir, goos string) golangciReport {
 	t.Helper()
-	config, err := filepath.Abs("../lint/golangci.yml")
+	config, err := filepath.Abs("../internal/lint/golangci.yml")
 	if err != nil {
 		t.Fatal(err)
 	}

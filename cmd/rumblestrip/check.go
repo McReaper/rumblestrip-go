@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/check"
+	"github.com/McReaper/rumblestrip-go/internal/check"
 	"github.com/spf13/cobra"
 )
 

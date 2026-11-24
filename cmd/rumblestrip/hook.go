@@ -10,11 +10,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/check"
-	"github.com/McReaper/rumblestrip-go/gesture"
-	"github.com/McReaper/rumblestrip-go/guard"
+	"github.com/McReaper/rumblestrip-go/internal/check"
+	"github.com/McReaper/rumblestrip-go/internal/guard"
 	"github.com/McReaper/rumblestrip-go/internal/platform/gitleaks"
-	"github.com/McReaper/rumblestrip-go/reread"
+	"github.com/McReaper/rumblestrip-go/internal/pretool"
+	"github.com/McReaper/rumblestrip-go/internal/staledocs"
 	"github.com/spf13/cobra"
 )
 
@@ -120,8 +120,8 @@ func sessionStartHook(cmd *cobra.Command, _ []string) error {
 
 // WHY: a session must start whatever git says, so a failure owes nothing
 // here: the Docs gate tells the agent again before it stops.
-func docsOwed(ctx context.Context, dir string) []reread.Doc {
-	r, err := reread.Status(ctx, dir, "origin/main")
+func docsOwed(ctx context.Context, dir string) []staledocs.Doc {
+	r, err := staledocs.Status(ctx, dir, "origin/main")
 	if err != nil {
 		return nil
 	}
@@ -135,8 +135,8 @@ func preToolHook(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	r := string(gesture.Check(gesture.Tool{Name: h.ToolName, Command: h.ToolInput.Command, FilePath: h.ToolInput.FilePath, Dir: h.Cwd}))
-	if r == "" && h.ToolName == "Bash" && gesture.Commits(h.ToolInput.Command) {
+	r := string(pretool.Check(pretool.Tool{Name: h.ToolName, Command: h.ToolInput.Command, FilePath: h.ToolInput.FilePath, Dir: h.Cwd}))
+	if r == "" && h.ToolName == "Bash" && pretool.Commits(h.ToolInput.Command) {
 		r = beforeCommit(cmd.Context(), h.Cwd)
 	}
 	if r == "" {

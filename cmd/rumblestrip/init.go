@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/McReaper/rumblestrip-go/internal/initrepo"
 	"github.com/McReaper/rumblestrip-go/internal/platform/ghapp"
 	"github.com/McReaper/rumblestrip-go/internal/platform/gomod"
-	"github.com/McReaper/rumblestrip-go/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -58,11 +58,11 @@ func runInit(ctx context.Context, out io.Writer, o initOptions) error {
 			return fmt.Errorf("rumblestrip init: %w", err)
 		}
 	}
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: tag, Commit: commit}, Owner: o.owner, OwnerEmail: o.ownerEmail})
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: tag, Commit: commit}, Owner: o.owner, OwnerEmail: o.ownerEmail})
 	if err != nil {
 		return err
 	}
-	r, err := setup.Write(".", fs)
+	r, err := initrepo.Write(".", fs)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func shortVersion(v string) string {
 	return v
 }
 
-func initReport(r setup.Report) string {
+func initReport(r initrepo.Report) string {
 	var b strings.Builder
 	for _, p := range r.Written {
 		fmt.Fprintf(&b, "written: %s\n", p)
@@ -141,10 +141,10 @@ func runInitGitHub(ctx context.Context, out io.Writer, o initGitHubOptions) erro
 	if err != nil {
 		return err
 	}
-	lines, err := setup.Protect(ctx, setup.GH{}, o.repo)
+	lines, err := initrepo.Protect(ctx, initrepo.GH{}, o.repo)
 	if err == nil {
 		var more []string
-		more, err = setup.GiveApp(ctx, setup.GH{}, app)
+		more, err = initrepo.GiveApp(ctx, initrepo.GH{}, app)
 		lines = append(lines, more...)
 	}
 	for _, l := range lines {
@@ -155,26 +155,26 @@ func runInitGitHub(ctx context.Context, out io.Writer, o initGitHubOptions) erro
 	return err
 }
 
-func mergeApp(ctx context.Context, o initGitHubOptions) (setup.MergeApp, error) {
+func mergeApp(ctx context.Context, o initGitHubOptions) (initrepo.MergeApp, error) {
 	if o.repo == "" {
-		return setup.MergeApp{}, errors.New("rumblestrip init github: name the repository with --repo OWNER/REPO")
+		return initrepo.MergeApp{}, errors.New("rumblestrip init github: name the repository with --repo OWNER/REPO")
 	}
 	if o.clientID == "" || o.key == "" {
-		return setup.MergeApp{}, errors.New("rumblestrip init github: Rumblestrip merges as a GitHub App: give its Client ID and key, --client-id and --key or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY; rumblestrip init app creates one")
+		return initrepo.MergeApp{}, errors.New("rumblestrip init github: Rumblestrip merges as a GitHub App: give its Client ID and key, --client-id and --key or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY; rumblestrip init app creates one")
 	}
 	jwt, err := (&appOptions{clientID: o.clientID, key: o.key}).jwt()
 	if err != nil {
-		return setup.MergeApp{}, fmt.Errorf("rumblestrip init github: %w", err)
+		return initrepo.MergeApp{}, fmt.Errorf("rumblestrip init github: %w", err)
 	}
 	inst, err := ghapp.NewClient().RepoInstallation(ctx, jwt, o.repo)
 	if err != nil {
-		return setup.MergeApp{}, fmt.Errorf("rumblestrip init github: is the App installed on %s? %w", o.repo, err)
+		return initrepo.MergeApp{}, fmt.Errorf("rumblestrip init github: is the App installed on %s? %w", o.repo, err)
 	}
 	key, err := ghapp.KeyFile(o.key)
 	if err != nil {
-		return setup.MergeApp{}, fmt.Errorf("rumblestrip init github: %w", err)
+		return initrepo.MergeApp{}, fmt.Errorf("rumblestrip init github: %w", err)
 	}
-	return setup.MergeApp{Repo: o.repo, ClientID: o.clientID, Key: key, Installation: inst}, nil
+	return initrepo.MergeApp{Repo: o.repo, ClientID: o.clientID, Key: key, Installation: inst}, nil
 }
 
 type initAppOptions struct {
@@ -206,7 +206,7 @@ func runInitApp(ctx context.Context, out io.Writer, o initAppOptions) error {
 		return fmt.Errorf("rumblestrip init app: %w", err)
 	}
 	base := "http://" + l.Addr().String()
-	manifest, err := setup.Manifest(o.name, base+"/created")
+	manifest, err := initrepo.Manifest(o.name, base+"/created")
 	if err != nil {
 		return err
 	}
@@ -222,8 +222,8 @@ func runInitApp(ctx context.Context, out io.Writer, o initAppOptions) error {
 
 // WHY: the server lives until GitHub's redirect brings the App back, the
 // owner gives up (the context), or a quarter of an hour passes.
-func serveUntilCreated(ctx context.Context, l net.Listener, h func(chan<- setup.App) http.Handler) (setup.App, error) {
-	created := make(chan setup.App, 1)
+func serveUntilCreated(ctx context.Context, l net.Listener, h func(chan<- initrepo.App) http.Handler) (initrepo.App, error) {
+	created := make(chan initrepo.App, 1)
 	srv := &http.Server{Handler: h(created), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	var wg sync.WaitGroup
@@ -232,7 +232,7 @@ func serveUntilCreated(ctx context.Context, l net.Listener, h func(chan<- setup.
 			serveErr = err
 		}
 	})
-	var app setup.App
+	var app initrepo.App
 	select {
 	case app = <-created:
 	case <-ctx.Done():
@@ -243,21 +243,21 @@ func serveUntilCreated(ctx context.Context, l net.Listener, h func(chan<- setup.
 	return app, errors.Join(err, serveErr)
 }
 
-func appHandler(manifest []byte, org string) func(chan<- setup.App) http.Handler {
-	return func(created chan<- setup.App) http.Handler {
+func appHandler(manifest []byte, org string) func(chan<- initrepo.App) http.Handler {
+	return func(created chan<- initrepo.App) http.Handler {
 		return appMux(manifest, org, created)
 	}
 }
 
-func appMux(manifest []byte, org string, created chan<- setup.App) http.Handler {
+func appMux(manifest []byte, org string, created chan<- initrepo.App) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
-		if err := setup.Form(w, setup.NewAppURL(org), manifest); err != nil {
+		if err := initrepo.Form(w, initrepo.NewAppURL(org), manifest); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
 	mux.HandleFunc("GET /created", func(w http.ResponseWriter, r *http.Request) {
-		ex := setup.Exchanger{Client: &http.Client{Timeout: 30 * time.Second}, BaseURL: "https://api.github.com"}
+		ex := initrepo.Exchanger{Client: &http.Client{Timeout: 30 * time.Second}, BaseURL: "https://api.github.com"}
 		app, err := ex.Exchange(r.Context(), r.URL.Query().Get("code"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
@@ -276,7 +276,7 @@ func appMux(manifest []byte, org string, created chan<- setup.App) http.Handler 
 
 // WHY: the key goes beside the user's other configuration, readable by them
 // alone, never into a repository.
-func saveApp(out io.Writer, app setup.App) error {
+func saveApp(out io.Writer, app initrepo.App) error {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return fmt.Errorf("rumblestrip init app: %w", err)

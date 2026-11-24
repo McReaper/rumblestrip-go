@@ -9,7 +9,7 @@ import (
 
 	"github.com/McReaper/rumblestrip-go/internal/platform/ghapi"
 	"github.com/McReaper/rumblestrip-go/internal/platform/git"
-	"github.com/McReaper/rumblestrip-go/pr"
+	"github.com/McReaper/rumblestrip-go/internal/pr"
 	"github.com/spf13/cobra"
 )
 

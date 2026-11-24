@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/sweep"
+	"github.com/McReaper/rumblestrip-go/internal/sweep"
 	"github.com/spf13/cobra"
 )
 

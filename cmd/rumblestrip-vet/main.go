@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/McReaper/rumblestrip-go/analyzers/all"
+	"github.com/McReaper/rumblestrip-go/internal/analyzers/all"
 	"golang.org/x/tools/go/analysis/multichecker"
 )
 

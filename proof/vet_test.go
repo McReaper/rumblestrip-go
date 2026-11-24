@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/McReaper/rumblestrip-go/analyzers/all"
+	"github.com/McReaper/rumblestrip-go/internal/analyzers/all"
 )
 
 const vetTool = "rumblestrip-vet/"
