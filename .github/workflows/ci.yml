@@ -108,6 +108,14 @@ jobs:
           printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s/internal/notes/internal/add/add.go"}}' "$app" "$app" |
             "$launcher" hook post-edit
           docker ps --filter name=rumblestrip- --format '{{.Image}}' | grep -qx "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
+          # In a linked worktree, git in the container reads the main
+          # checkout's git directory.
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -q -m app
+          base=$(git rev-parse HEAD)
+          git worktree add -q -b worktree "$RUNNER_TEMP/worktree"
+          cd "$RUNNER_TEMP/worktree"
+          "$launcher" guard --base "$base"
 
       # The gates block on a finding with a fixed version: an Ubuntu package,
       # which the daily apt layer picks up, and anything critical. The rest

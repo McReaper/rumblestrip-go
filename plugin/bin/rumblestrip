@@ -35,9 +35,9 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 bin=$cache/$pin
 
-# Why the image can't run here, or nothing: it is x86-64's, and it mounts the
-# repository alone, so a linked worktree's or a submodule's git directory
-# lies outside it.
+# Why the image can't run here, or nothing: it is x86-64's, and git takes a
+# submodule's working tree from its git directory, which names it by its
+# path on the host.
 unfit() {
   case $(uname -m) in
     x86_64 | amd64) ;;
@@ -46,8 +46,8 @@ unfit() {
       return
       ;;
   esac
-  if [ ! -d "$root/.git" ]; then
-    echo "Rumblestrip's checks run in its image, which can't reach a linked worktree's or a submodule's git directory: work in the repository's own checkout."
+  if [ -f "$root/.git" ] && git config core.worktree >/dev/null; then
+    echo "Rumblestrip's checks run in its image, which can't use a submodule's git directory: work in a clone of the submodule's repository."
   elif ! command -v docker >/dev/null 2>&1; then
     echo "Rumblestrip's checks run in its image, through Docker, which isn't installed: ask the user to install it, then run rumblestrip setup."
   fi
@@ -86,12 +86,31 @@ running() {
   [ "$(state)" = running ]
 }
 
+# A linked worktree's .git is a file naming its git directory, inside the
+# main checkout's: the container mounts that one at /git, and, in the
+# container only, a .git of its own names the worktree's place there. The
+# file lives in the cache, as long as the container.
+worktree() {
+  gitdir=$(git rev-parse --path-format=absolute --git-dir)
+  common=$(git rev-parse --path-format=absolute --git-common-dir)
+  gitfile=$cache/gitfiles/$container
+  line="gitdir: /git${gitdir#"$common"}"
+  if [ "$(cat "$gitfile" 2>/dev/null)" != "$line" ]; then
+    mkdir -p "$cache/gitfiles"
+    echo "$line" >"$gitfile"
+  fi
+}
+
 # --rm removes a container once it stops, so one that is there but not
 # running is another hook's, starting; one that never runs is removed, for
 # the next call to start afresh.
 start() {
   running && return 0
   set -- --detach --rm --init --name "$container" --mount "type=bind,source=$root,target=/work" --volume rumblestrip-go:/go
+  if [ -f "$root/.git" ]; then
+    worktree
+    set -- "$@" --mount "type=bind,source=$common,target=/git" --mount "type=bind,source=$gitfile,target=/work/.git"
+  fi
   case $(uname -s) in
     MINGW* | MSYS* | CYGWIN*) ;;
     *) set -- "$@" --user "$(id -u):$(id -g)" ;;

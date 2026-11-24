@@ -331,7 +331,7 @@ func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
 
 // WHY: plugin/bin/rumblestrip runs in a repository rumblestrip init set
 // up, with a go, a docker and a uname on the PATH that say how they were
-// called; docker keeps its one container's state and whether the image was
+// called; docker keeps each container's state and whether the image was
 // pulled in files, and go install writes a rumblestrip that says how it was
 // called and ends with FAKE_HOST_EXIT.
 type launcher struct{ dir, fakes, tmp, log, golog, commit, input string }
@@ -345,21 +345,22 @@ chmod +x "$GOBIN/rumblestrip"
 const fakeDocker = `#!/bin/sh
 echo "docker $*" >> "$FAKE_DOCKER_LOG"
 [ "${FAKE_DOCKER-}" != down ] || exit 1
-state=$FAKE_DOCKER_LOG.state
+for last; do :; done
 case $1 in
   image) [ -e "$FAKE_DOCKER_LOG.image" ] ;;
   pull) touch "$FAKE_DOCKER_LOG.image" ;;
-  inspect) cat "$state" 2>/dev/null ;;
+  inspect) cat "$FAKE_DOCKER_LOG.$last" 2>/dev/null ;;
   run)
     if [ "${FAKE_RUN-}" = fail ]; then
       echo "no space left on device" >&2
       exit 125
     fi
-    echo running > "$state" ;;
-  rm) rm -f "$state" ;;
+    while [ "$1" != --name ]; do shift; done
+    echo running > "$FAKE_DOCKER_LOG.$2" ;;
+  rm) rm -f "$FAKE_DOCKER_LOG.$last" ;;
   exec)
     case ${FAKE_EXEC-} in
-      gone) rm -f "$state"; exit 1 ;;
+      gone) rm -f "$FAKE_DOCKER_LOG".rumblestrip-*; exit 1 ;;
       refuse) echo "docker $*"; exit 2 ;;
       *) echo "docker $*" ;;
     esac ;;
@@ -488,7 +489,9 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 // works unchecked: every hook refuses with exit code 2, the one Claude Code
 // blocks on, but on setup itself, the agent's second try to stop, and a
 // session's start, which tells the agent why; setup refuses where the image
-// can't run. Nothing is pulled or installed behind the user's back.
+// can't run, on arm64 and in a submodule, whose git directory names its
+// working tree by its host path. Nothing is pulled or installed behind the
+// user's back.
 func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 	t.Helper()
 	bash := func(command string) string {
@@ -496,9 +499,11 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 	}
 	push := bash("git push origin main")
 	pull := "run rumblestrip setup, which pulls it"
-	worktree := l
-	worktree.dir = filepath.Join(t.TempDir(), "worktree")
-	gitIn(t, l.dir, "worktree", "add", "-q", worktree.dir)
+	super := t.TempDir()
+	gitIn(t, super, "init", "-q")
+	gitIn(t, super, "-c", "protocol.file.allow=always", "submodule", "add", "-q", filepath.ToSlash(l.dir), "app")
+	submodule := l
+	submodule.dir = filepath.Join(super, "app")
 	for _, c := range []struct {
 		who   string
 		l     launcher
@@ -520,8 +525,8 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 		{"setup, Docker not running,", l, "FAKE_DOCKER=down", "", []string{"setup"}, 1, "Docker isn't running"},
 		{"a command on an arm64 machine", l, "FAKE_ARCH=arm64", push, []string{"hook", "pre-tool"}, 2, "built for x86-64 only, and this machine is arm64"},
 		{"setup on an arm64 machine", l, "FAKE_ARCH=arm64", "", []string{"setup"}, 1, "built for x86-64 only"},
-		{"a command in a linked worktree", worktree, "", push, []string{"hook", "pre-tool"}, 2, "can't reach a linked worktree's"},
-		{"setup in a linked worktree", worktree, "", "", []string{"setup"}, 1, "can't reach a linked worktree's"},
+		{"a command in a submodule", submodule, "", push, []string{"hook", "pre-tool"}, 2, "can't use a submodule's git directory"},
+		{"setup in a submodule", submodule, "", "", []string{"setup"}, 1, "can't use a submodule's git directory"},
 	} {
 		out, code := c.l.given(c.input).run(t, c.env, c.args...)
 		if code != c.code || (c.want == "") != (out == "") || !strings.Contains(out, c.want) {
@@ -540,6 +545,10 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 // on Windows; the next ones reuse it. A refusal comes back with its code;
 // a check whose container stopped under it, or never started, is refused,
 // and says why.
+//
+// A linked worktree's container mounts the main checkout's git directory,
+// and its own .git names the worktree's place in it, while the host's stays
+// as git wrote it.
 func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	t.Helper()
 	out, _ := l.run(t, "", "hook", "stop")
@@ -570,6 +579,34 @@ func launcherRunsChecksInTheImage(t *testing.T, l launcher, image string) {
 	out, _ = l.run(t, "FAKE_OS=MINGW64_NT-10.0-26200", "check")
 	if calls := l.calls(t); !strings.HasPrefix(out, "docker exec ") || !strings.Contains(calls, "docker run --detach ") || strings.Contains(calls, "--user") {
 		t.Errorf("on Windows, a check ran %q, and docker:\n%s", out, calls)
+	}
+	launcherMountsAWorktreesGitDirectory(t, l)
+}
+
+func launcherMountsAWorktreesGitDirectory(t *testing.T, l launcher) {
+	t.Helper()
+	worktree := l
+	worktree.dir = filepath.Join(t.TempDir(), "worktree")
+	gitIn(t, l.dir, "worktree", "add", "-q", worktree.dir)
+	host, err := os.ReadFile(filepath.Join(worktree.dir, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := worktree.run(t, "", "guard")
+	calls := l.calls(t)
+	mounts := regexp.MustCompile(` --mount type=bind,source=(\S+),target=/git --mount type=bind,source=(\S+),target=/work/\.git `).FindStringSubmatch(calls)
+	if !strings.HasPrefix(out, "docker exec ") || mounts == nil {
+		t.Fatalf("in a linked worktree, guard ran %q, and docker:\n%s", out, calls)
+	}
+	common, err := os.Stat(mounts[1])
+	if main, err2 := os.Stat(filepath.Join(l.dir, ".git")); err != nil || err2 != nil || !os.SameFile(common, main) {
+		t.Errorf("the worktree's container mounts %s at /git, not the main checkout's git directory: %v, %v", mounts[1], err, err2)
+	}
+	if data, err := os.ReadFile(mounts[2]); err != nil || string(data) != "gitdir: /git/worktrees/worktree\n" {
+		t.Errorf("the container's .git reads %q: %v", data, err)
+	}
+	if after, err := os.ReadFile(filepath.Join(worktree.dir, ".git")); err != nil || string(after) != string(host) {
+		t.Errorf("the host's .git went from %q to %q: %v", host, after, err)
 	}
 }
 

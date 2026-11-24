@@ -28,7 +28,7 @@ With the App's `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`, it checks 
 
 ## The agent's machine
 
-The plugin runs the agent's checks in Rumblestrip's image, through Docker: every tool they need, at the versions CI runs. Run `/rumblestrip:setup` in Claude Code once, and again when the pin moves: it pulls the image, and installs `rumblestrip` for `pr`, `app` and `init`, which run on the machine with your credentials, through Go. Until then, the hooks refuse every command and edit. The image runs on x86-64 only, and can't reach a linked worktree's or a submodule's git directory.
+The plugin runs the agent's checks in Rumblestrip's image, through Docker: every tool they need, at the versions CI runs. Run `/rumblestrip:setup` in Claude Code once, and again when the pin moves: it pulls the image, and installs `rumblestrip` for `pr`, `app` and `init`, which run on the machine with your credentials, through Go. Until then, the hooks refuse every command and edit. The image runs on x86-64 only, and not in a git submodule.
 
 ## Harder to undo: managed settings
 
