@@ -47,7 +47,7 @@ func gitIn(t *testing.T, dir string, args ...string) {
 
 func guardFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip"), "guard", "--base", "base", "--json")
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), "guard", "--base", "base", "--json")
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()

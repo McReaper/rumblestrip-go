@@ -29,7 +29,7 @@ func fileGates() []gate {
 		{Gate{"shellcheck", "shellcheck", "Shell scripts", "The shell scripts have no known pitfall."}, shellcheckGate},
 		{Gate{"psscriptanalyzer", "psscriptanalyzer", "PowerShell scripts", "The PowerShell scripts have no known pitfall."}, psscriptanalyzerGate},
 		{Gate{"gitleaks", "gitleaks", "Secrets", "No secret is committed."}, gitleaksGate},
-		{Gate{"rumblestrip-files", "rumblestrip files", "Rumblestrip files", "Rumblestrip's workflows are the ones this Rumblestrip version writes."}, kitFilesGate},
+		{Gate{"rumblestrip-files", "rumblestrip files", "Rumblestrip files", "Rumblestrip's workflows are the ones this Rumblestrip version writes."}, filesGate},
 	}
 }
 
@@ -157,7 +157,7 @@ func gitleaksGate(ctx context.Context, o Options) Result {
 
 // WHY: Rumblestrip's workflows are the files an app keeps; once a Rumblestrip version
 // needs them otherwise, the app hears it from its own check.
-func kitFilesGate(_ context.Context, o Options) Result {
+func filesGate(_ context.Context, o Options) Result {
 	current, err := os.ReadFile(filepath.Join(o.Dir, ".github", "workflows", "rumblestrip.yml"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Result{}

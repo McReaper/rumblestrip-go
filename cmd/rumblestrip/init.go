@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const kitModule = "github.com/McReaper/rumblestrip-go"
+const rumblestripModule = "github.com/McReaper/rumblestrip-go"
 
 type initOptions struct {
 	owner      string
@@ -49,7 +49,7 @@ func runInit(ctx context.Context, out io.Writer, o initOptions) error {
 	if tag == "" {
 		return errors.New("rumblestrip init: this rumblestrip was built from a checkout: name the release to pin with --version")
 	}
-	commit, err := gomod.Commit(ctx, kitModule, tag)
+	commit, err := gomod.Commit(ctx, rumblestripModule, tag)
 	if err != nil {
 		return fmt.Errorf("rumblestrip init: %w", err)
 	}
@@ -84,7 +84,7 @@ func noReply(ctx context.Context, c ghapp.Client, login string) (string, error) 
 // WHY: go install and go run record the version they built; a checkout's
 // build says (devel), and names no release to pin.
 func ownVersion() string {
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Path == kitModule && strings.HasPrefix(info.Main.Version, "v") {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Path == rumblestripModule && strings.HasPrefix(info.Main.Version, "v") {
 		return info.Main.Version
 	}
 	return ""

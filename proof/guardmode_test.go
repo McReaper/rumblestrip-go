@@ -8,7 +8,7 @@ import (
 
 func guardRun(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip"), append([]string{"guard", "--base", "base"}, args...)...)
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), append([]string{"guard", "--base", "base"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err == nil {

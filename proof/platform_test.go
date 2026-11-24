@@ -44,9 +44,9 @@ func readJSON(t *testing.T, path string, v any) {
 	}
 }
 
-func TestTheKitsRulesetLetsOnlyTheOwnerMergeAnApprovedCheckedChange(t *testing.T) {
+func TestRumblestripsRulesetLetsOnlyTheOwnerMergeAnApprovedCheckedChange(t *testing.T) {
 	var r ruleset
-	readJSON(t, "../platform/ruleset-rumblestrip.json", &r)
+	readJSON(t, "../.github/ruleset.json", &r)
 	var types []string
 	for _, rule := range r.Rules {
 		types = append(types, rule.Type)
@@ -279,12 +279,12 @@ func initFiles(t *testing.T) map[string]string {
 // by rumblestrip init, hold them and turn Rumblestrip's plugin on, managed settings do
 // both where the agent can't undo them, and the plugin's hooks refuse what
 // a deny rule's text misses (git -C . push).
-func TestTheAgentSettingsDenyBypassesAndThePluginRunsTheKitHooks(t *testing.T) {
+func TestTheAgentSettingsDenyBypassesAndThePluginRunsRumblestripsHooks(t *testing.T) {
 	var project, managed, plugin claudeSettings
 	if err := json.Unmarshal([]byte(initFiles(t)[".claude/settings.json"]), &project); err != nil {
 		t.Fatal(err)
 	}
-	readJSON(t, "../platform/claude/managed-settings.json", &managed)
+	readJSON(t, "../docs/managed-settings.json", &managed)
 	readJSON(t, "../plugin/hooks/hooks.json", &plugin)
 	for _, want := range []string{"Bash(git commit --no-verify *)", "Bash(git push --force *)", "Bash(git push --force-with-lease * main)", "Bash(gh pr merge *)", "Edit(./.github/**)"} {
 		if !slices.Contains(project.Permissions.Deny, want) {
@@ -310,7 +310,7 @@ func TestTheAgentSettingsDenyBypassesAndThePluginRunsTheKitHooks(t *testing.T) {
 // WHY: the commit on the default branch is Rumblestrip's merge job's; the
 // agent's own commits and pull requests name Rumblestrip, not Claude, without
 // a prompt saying so.
-func TestTheSettingsNameTheKitInTheAgentsCommitsAndPullRequests(t *testing.T) {
+func TestTheSettingsNameRumblestripInTheAgentsCommitsAndPullRequests(t *testing.T) {
 	var settings struct {
 		Attribution struct {
 			Commit     string `json:"commit"`
@@ -632,7 +632,7 @@ func TestTheAppCodeOwnersHoldTheHarnessAndLeaveTheSpecToTheCheck(t *testing.T) {
 
 // WHY: what rumblestrip init writes is what every app's CI runs; it passes the
 // workflow gates Rumblestrip holds an app's workflows to.
-func TestTheCIKitInitWritesPassesTheWorkflowGates(t *testing.T) {
+func TestTheCIInitWritesPassesTheWorkflowGates(t *testing.T) {
 	withZizmor(t)
 	dir := t.TempDir()
 	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
@@ -689,7 +689,7 @@ func TestThePluginShipsWhatItsManifestsAndHooksName(t *testing.T) {
 
 func hookRun(t *testing.T, input string, args ...string) (string, int) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip"), append([]string{"hook"}, args...)...)
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), append([]string{"hook"}, args...)...)
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
 	if err == nil {

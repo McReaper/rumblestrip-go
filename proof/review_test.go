@@ -21,7 +21,7 @@ type reviewRow struct {
 
 func reviewFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	out, code := kitRun(t, dir, "review", "--base", "base", "--json")
+	out, code := runRumblestrip(t, dir, "review", "--base", "base", "--json")
 	if code != 0 {
 		t.Fatalf("rumblestrip review: exit %d\n%s", code, out)
 	}
@@ -39,7 +39,7 @@ func reviewFindings(t *testing.T, dir string) []finding {
 // WHY: the owner judges a change from its sheet, not its diff: it must
 // list exactly what is theirs, the spec first, or they approve what they
 // never saw; and nothing else, or they stop reading it.
-func TestKitReviewListsWhatTheOwnerMustRead(t *testing.T) {
+func TestReviewListsWhatTheOwnerMustRead(t *testing.T) {
 	for _, c := range loadCases(t) {
 		if !c.uses(reviewTool) {
 			continue
@@ -56,9 +56,9 @@ func TestKitReviewListsWhatTheOwnerMustRead(t *testing.T) {
 // none where Go reads no version control, in a git worktree.
 var footerVersion = regexp.MustCompile(`\)(?: [^ <]+)?</sub>`)
 
-func TestKitReviewWritesTheSheetForThePullRequest(t *testing.T) {
+func TestReviewWritesTheSheetForThePullRequest(t *testing.T) {
 	dir := changeOf(t, caseNamed(t, "t2-review-sheet"))
-	out, code := kitRun(t, dir, "review", "--base", "base")
+	out, code := runRumblestrip(t, dir, "review", "--base", "base")
 	want, err := os.ReadFile("testdata/review-sheet.md")
 	if err != nil {
 		t.Fatal(err)
@@ -66,15 +66,15 @@ func TestKitReviewWritesTheSheetForThePullRequest(t *testing.T) {
 	if diff := cmp.Diff(string(want), footerVersion.ReplaceAllString(out, ") VERSION</sub>")); code != 0 || diff != "" {
 		t.Errorf("exit %d, sheet (-want +got):\n%s", code, diff)
 	}
-	labels, _ := kitRun(t, dir, "review", "--base", "base", "--labels")
+	labels, _ := runRumblestrip(t, dir, "review", "--base", "base", "--labels")
 	if labels != "+human-review\n" {
 		t.Errorf("labels:\n%s", labels)
 	}
-	out, _ = kitRun(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base")
+	out, _ = runRumblestrip(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base")
 	if !strings.Contains(out, "Nothing for you: Rumblestrip merges it once they pass.") {
 		t.Errorf("an empty change:\n%s", out)
 	}
-	labels, _ = kitRun(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base", "--labels")
+	labels, _ = runRumblestrip(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base", "--labels")
 	if strings.Contains(labels, "+") {
 		t.Errorf("an empty change earns no label:\n%s", labels)
 	}
@@ -83,7 +83,7 @@ func TestKitReviewWritesTheSheetForThePullRequest(t *testing.T) {
 // WHY: the review sheet's job posts the owner's approval status the
 // ruleset requires, and the label, from where their approval stands: once
 // they approved the commit, both say so.
-func TestKitReviewSaysWhereTheOwnersApprovalStands(t *testing.T) {
+func TestReviewSaysWhereTheOwnersApprovalStands(t *testing.T) {
 	dir := changeOf(t, caseNamed(t, "t2-review-sheet"))
 	for _, c := range []struct {
 		args            []string
@@ -92,13 +92,13 @@ func TestKitReviewSaysWhereTheOwnersApprovalStands(t *testing.T) {
 		{nil, "waiting\n", "+human-review\n"},
 		{[]string{"--approved"}, "approved\n", "-human-review\n"},
 	} {
-		approval, _ := kitRun(t, dir, append([]string{"review", "--base", "base", "--approval"}, c.args...)...)
-		labels, _ := kitRun(t, dir, append([]string{"review", "--base", "base", "--labels"}, c.args...)...)
+		approval, _ := runRumblestrip(t, dir, append([]string{"review", "--base", "base", "--approval"}, c.args...)...)
+		labels, _ := runRumblestrip(t, dir, append([]string{"review", "--base", "base", "--labels"}, c.args...)...)
 		if approval != c.approval || labels != c.label {
 			t.Errorf("%v: approval %q, labels %q; want %q, %q", c.args, approval, labels, c.approval, c.label)
 		}
 	}
-	if approval, _ := kitRun(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base", "--approval"); approval != "none\n" {
+	if approval, _ := runRumblestrip(t, changeOf(t, trialCase{name: "no change"}), "review", "--base", "base", "--approval"); approval != "none\n" {
 		t.Errorf("an empty change: approval %q", approval)
 	}
 }

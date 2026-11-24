@@ -32,7 +32,7 @@ func files(t *testing.T) map[string]string {
 	return out
 }
 
-func TestTheFilesPinTheKitNameTheOwnerAndTurnThePluginOn(t *testing.T) {
+func TestTheFilesPinRumblestripNameTheOwnerAndTurnThePluginOn(t *testing.T) {
 	got := files(t)
 	for path, want := range map[string]string{
 		".github/workflows/rumblestrip.yml":          "uses: McReaper/rumblestrip-go/.github/workflows/rumblestrip-check.yml@" + commit + " # v0.2.0\n    with:\n      owner: octo\n",
@@ -63,7 +63,7 @@ func TestTheFilesPinTheKitNameTheOwnerAndTurnThePluginOn(t *testing.T) {
 	}
 }
 
-func TestTheFilesNeedTheOwnerAndTheKitsFullCommit(t *testing.T) {
+func TestTheFilesNeedTheOwnerAndRumblestripsFullCommit(t *testing.T) {
 	for _, o := range []initrepo.Options{
 		{Version: initrepo.Version{Tag: "v0.2.0", Commit: commit}},
 		{Version: initrepo.Version{Tag: "v0.2.0", Commit: "0123456"}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"},
@@ -113,7 +113,7 @@ func (f *fakeAPI) Call(_ context.Context, r initrepo.Request) ([]byte, error) {
 	return []byte(f.reply[r.Method+" "+r.Path]), nil
 }
 
-func TestProtectBringsAnExistingRulesetToTheKitsAndCreatesTheOther(t *testing.T) {
+func TestProtectBringsAnExistingRulesetToRumblestripsAndCreatesTheOther(t *testing.T) {
 	var tags struct {
 		Name string `json:"name"`
 	}
@@ -236,7 +236,7 @@ func TestExchangeTradesTheCodeForTheAppAndItsKey(t *testing.T) {
 	}
 }
 
-func TestTheWorkflowsForAPinAreTheOnesKitInitWritesForIt(t *testing.T) {
+func TestTheWorkflowsForAPinAreTheOnesInitWritesForIt(t *testing.T) {
 	all := files(t)
 	written := []byte(all[".github/workflows/rumblestrip.yml"])
 	got, err := initrepo.WorkflowsFor(written)

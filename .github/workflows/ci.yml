@@ -9,7 +9,7 @@ on:
 permissions: {}
 
 jobs:
-  kit:
+  rumblestrip:
     # Rumblestrip's image is built first, and every check runs in it: the
     # proofs run with the tools the image carries, at the versions tools.txt
     # pins.
@@ -50,24 +50,24 @@ jobs:
       - name: Start the image on the repository
         run: |
           mkdir -p "$RUNNER_TEMP/go"
-          docker run --detach --name kit --user "$(id -u):$(id -g)" --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/go:/go" rumblestrip:ci sleep infinity
-      - run: docker exec kit go vet ./...
+          docker run --detach --name ci --user "$(id -u):$(id -g)" --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/go:/go" rumblestrip:ci sleep infinity
+      - run: docker exec ci go vet ./...
       - name: Lint Rumblestrip with its own rules, for every target system
         run: |
-          docker exec kit sh -euc '
+          docker exec ci sh -euc '
             go build -o /tmp/rumblestrip-vet ./cmd/rumblestrip-vet
             for goos in linux windows; do
               GOOS=$goos golangci-lint run --config internal/lint/golangci.yml ./...
               GOOS=$goos /tmp/rumblestrip-vet ./...
             done'
       - name: Prove every rule on the trial
-        run: docker exec kit go test -race -count=1 ./...
+        run: docker exec ci go test -race -count=1 ./...
       - name: Show that the race detector's proof ran
         run: |
-          docker exec kit go test -race -count=1 -run '^TestRaceDetectorReportsEveryCase$' -v ./proof/ | grep -- '--- PASS: TestRaceDetectorReportsEveryCase'
+          docker exec ci go test -race -count=1 -run '^TestRaceDetectorReportsEveryCase$' -v ./proof/ | grep -- '--- PASS: TestRaceDetectorReportsEveryCase'
       - name: Check Rumblestrip's own workflows and history
         run: |
-          docker exec kit sh -euc '
+          docker exec ci sh -euc '
             actionlint
             zizmor --offline .github/workflows
             gitleaks git --no-banner --redact --config .gitleaks.toml .'
@@ -181,7 +181,7 @@ jobs:
     # sha-<commit>: a workflow pinned at that commit runs it. A push to main
     # also tags it main; a release tag, its version and latest. Only merged
     # code runs here, so only this job may write packages.
-    needs: kit
+    needs: rumblestrip
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

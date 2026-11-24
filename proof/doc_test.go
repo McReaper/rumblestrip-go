@@ -42,7 +42,7 @@ func TestTheDocCitesEveryCaseAndOnlyCasesThatExist(t *testing.T) {
 	caseLike := regexp.MustCompile(`^(m\d+|e\d+|s\d*|t\d|guard|ci|sh|fmt)-[a-z0-9-]+$`)
 	for name := range cited {
 		if caseLike.MatchString(name) && !slices.Contains(cases, name) {
-			t.Errorf("docs/rumblestrip.md cites case %s, which trial/cases doesn't hold", name)
+			t.Errorf("docs/rumblestrip.md cites case %s, which proof/cases doesn't hold", name)
 		}
 	}
 }

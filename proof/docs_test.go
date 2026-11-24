@@ -13,7 +13,7 @@ const docsTool = "docs/"
 // is a commit on top of the clean trial, the way a pull request sits on main.
 func docsFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip"), "docs", "--base", "base", "--json")
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), "docs", "--base", "base", "--json")
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()

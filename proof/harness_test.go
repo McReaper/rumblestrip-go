@@ -14,7 +14,7 @@ import (
 
 const (
 	cleanDir = "../template"
-	casesDir = "../trial/cases"
+	casesDir = "cases"
 )
 
 type want struct {
