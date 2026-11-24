@@ -1,5 +1,5 @@
 # Rumblestrip's golangci-lint config. Apps run this file through `rumblestrip lint`, never
-# a config of their own. Each linter is here for a criterion of docs/rumblestrip.md,
+# a config of their own. Each linter is here for a criterion of docs/rules.md,
 # and each has a proof case under proof/cases.
 version: "2"
 

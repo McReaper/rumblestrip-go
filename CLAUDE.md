@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every rule and its proof; read it before changing a rule, and `docs/adr/` before reopening a decision.
+Rumblestrip: the rails AI-written Go stays on. `docs/rules.md` holds every rule and its proof; read it before changing a rule, and `docs/adr/` before reopening a decision.
 
 ## Layout
 
@@ -17,20 +17,20 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `internal/archtest/` — architecture rules over go/packages.
 - `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
 - `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `proof/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
-- `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rumblestrip.md` against the cases and `tools.txt`.
+- `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rules.md` against the cases and `tools.txt`.
 - `tools.txt` — every tool's pinned version; the image installs exactly these.
 - `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it on findings with a fix; `.trivyignore.yaml` holds those that don't apply, each with why.
 
 ## Rules
 
 - Rumblestrip is for one owner who reads the spec, never the code (ADR 9). When a check misses something, close the gap with another check, never with something more for the owner to read.
-- No config from memory: a rule enters `docs/rumblestrip.md` only once a case proves it, with the exact finding (tool, file, line, message).
+- No config from memory: a rule enters `docs/rules.md` only once a case proves it, with the exact finding (tool, file, line, message).
 - A case that runs one tool only: mark it `!isolated` if it replaces a file others build on (go.mod).
 - Never run go-mutesting on `template`: it rewrites the source while tests run. The proof runs it on copies.
 - Rumblestrip passes its own rules: `golangci-lint run --config internal/lint/golangci.yml ./...` and rumblestrip-vet, for GOOS linux and windows.
 - Moving the `go` or `toolchain` line follows ADR 1; `go get x@latest` can move it silently, so check go.mod after any `go get`.
 - Everything in English. Conventional commits. Checks are Go, not scripts in another language.
-- People read `README.md`, `docs/guide.md` and `docs/setup.md`: plain words, no criterion IDs, within the word budgets `TestTheHumanDocsStayShort` enforces. The criteria go in `docs/rumblestrip.md`.
+- People read `README.md`, `docs/guide.md` and `docs/setup.md`: plain words, no criterion IDs, within the word budgets `TestTheHumanDocsStayShort` enforces. The criteria go in `docs/rules.md`, within its own budget.
 - This repository's own ruleset is `.github/ruleset.json`, applied by hand: `gh api repos/McReaper/rumblestrip-go/rulesets/26266513 --method PUT --input .github/ruleset.json`. It requires the CI job `rumblestrip`: rename one, rename both.
 
 ## Commands

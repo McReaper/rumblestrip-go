@@ -84,7 +84,7 @@ Then open Claude Code in the repository, run `/rumblestrip:setup` once, and ask 
 
 - [The guide](docs/guide.md) — reading a pull request, approving, when something is stuck.
 - [Setup in detail](docs/setup.md) — what each command sets, and what the agent can't do.
-- [The rules](docs/rumblestrip.md) — every criterion, the check that holds it, and its proof.
+- [The rules](docs/rules.md) — every criterion, the check that holds it, and its proof.
 - [Contributing](CLAUDE.md).
 
 ## 📄 License
