@@ -11,7 +11,7 @@ import (
 
 func readDoc(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile("../docs/rumblestrip.md")
+	data, err := os.ReadFile("../docs/rules.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,14 +35,14 @@ func TestTheDocCitesEveryCaseAndOnlyCasesThatExist(t *testing.T) {
 		if e.IsDir() {
 			cases = append(cases, e.Name())
 			if !cited[e.Name()] {
-				t.Errorf("case %s proves a rule docs/rumblestrip.md never names", e.Name())
+				t.Errorf("case %s proves a rule docs/rules.md never names", e.Name())
 			}
 		}
 	}
 	caseLike := regexp.MustCompile(`^(m\d+|e\d+|s\d*|t\d|guard|ci|sh|fmt)-[a-z0-9-]+$`)
 	for name := range cited {
 		if caseLike.MatchString(name) && !slices.Contains(cases, name) {
-			t.Errorf("docs/rumblestrip.md cites case %s, which proof/cases doesn't hold", name)
+			t.Errorf("docs/rules.md cites case %s, which proof/cases doesn't hold", name)
 		}
 	}
 }
@@ -64,7 +64,7 @@ func TestTheDocNamesEveryPinnedTool(t *testing.T) {
 			name = "gitleaks"
 		}
 		if !strings.Contains(doc, name) {
-			t.Errorf("tools.txt pins %s, which docs/rumblestrip.md never names", name)
+			t.Errorf("tools.txt pins %s, which docs/rules.md never names", name)
 		}
 	}
 }
@@ -76,15 +76,16 @@ var (
 	htmlTag      = regexp.MustCompile(`<[^>]+>`)
 )
 
-// WHY: the owner reads these, and stops reading a page that grows: each
-// stays within its budget, the criteria's detail going to
-// docs/rumblestrip.md.
+// WHY: people stop reading a page that grows: each stays within its
+// budget. The owner reads the first four; a maintainer reads the rules,
+// one entry a criterion, and the commits keep how each rule came to be.
 func TestTheHumanDocsStayShort(t *testing.T) {
 	for file, budget := range map[string]int{
 		"../README.md":          650,
 		"../docs/guide.md":      600,
 		"../docs/setup.md":      500,
 		"../template/README.md": 150,
+		"../docs/rules.md":      3000,
 	} {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -92,7 +93,7 @@ func TestTheHumanDocsStayShort(t *testing.T) {
 		}
 		prose := htmlTag.ReplaceAllString(mermaidBlock.ReplaceAllString(string(data), ""), "")
 		if words := len(strings.Fields(prose)); words > budget {
-			t.Errorf("%s has %d words, its budget is %d: say less, or move the detail to docs/rumblestrip.md", file, words, budget)
+			t.Errorf("%s has %d words, its budget is %d: say less, or move the detail to the page its reader reads", file, words, budget)
 		}
 	}
 }
@@ -117,7 +118,7 @@ func TestTheDocsProofTestsExist(t *testing.T) {
 	}
 	for _, m := range tests {
 		if !strings.Contains(src, "func "+m[1]+"(") {
-			t.Errorf("docs/rumblestrip.md cites %s, which no proof test defines", m[1])
+			t.Errorf("docs/rules.md cites %s, which no proof test defines", m[1])
 		}
 	}
 }
