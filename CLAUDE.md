@@ -1,39 +1,43 @@
 # CLAUDE.md
 
-Rumblestrip: the rails AI-written Go stays on. `docs/rules.md` holds every rule and its proof; read it before changing a rule, and `docs/adr/` before reopening a decision.
+Rumblestrip keeps AI-written Go on its rails. Read `docs/rules.md` before changing a rule, and `docs/adr/` before reopening a decision.
 
 ## Layout
 
-- `cmd/rumblestrip` + `internal/<command>/` — the CLI; each command's logic lives in the package named after it (but `internal/pretool`, `hook pre-tool`'s; `internal/staledocs`, `docs`'s; `internal/initrepo`, `init`'s).
-- `internal/lint/golangci.yml` — the curated golangci-lint config apps run (never their own).
-- `internal/analyzers/<name>/` + `cmd/rumblestrip-vet` — Rumblestrip's go/analysis analyzers, each tested with analysistest; `internal/analyzers/layout` says which part of the architecture a package is.
-- `internal/guard/` — `rumblestrip guard`, the diff checks.
-- `internal/spec/` — the spec: Gherkin scenarios under an app's `features/`, what a change does to them, and `rumblestrip spec`, which shows each step can fail.
-- `internal/pretool/` — what `rumblestrip hook pre-tool` refuses before the agent runs it.
-- `internal/initrepo/` — `rumblestrip init`: the files an app keeps, its GitHub settings, the agent's App; `internal/initrepo/files/` holds them, the app rulesets included.
-- `.github/workflows/rumblestrip-check.yml` and `rumblestrip-approval.yml` — the checks an app's workflows call: one job per check, the review sheet, Check, the merge; their header comments say how they run.
-- `plugin/` + `.claude-plugin/marketplace.json` — the Claude Code plugin apps turn on: skills, rules, hooks; `plugin/bin/rumblestrip` runs rumblestrip at the version the app's CI pins: its checks in the image of that commit, one container a repository, the hooks' host paths mapped to `/work`, a linked worktree's git directory to `/git`; `pr`, `app` and `init` on the host, from the binary `rumblestrip setup` installs for the pin in `~/.cache/rumblestrip`. Until setup has pulled the image, the hooks refuse every command and edit but setup.
-- `internal/pr/` — `rumblestrip pr create` and `pr stack`: an agent's pull request, its title as the check wants it, stacked on its base's.
-- `internal/archtest/` — architecture rules over go/packages.
-- `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
-- `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `proof/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
-- `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rules.md` against the cases and `tools.txt`.
-- `tools.txt` — every tool's pinned version; the image installs exactly these.
-- `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it on findings with a fix; `.trivyignore.yaml` holds those that don't apply, each with why.
+- `cmd/rumblestrip`: the CLI.
+- `cmd/rumblestrip-vet`: the analyzers' multichecker.
+- `internal/<command>/`: each command's logic, in the package named after it. The exceptions are `pretool` (`hook pre-tool`), `staledocs` (`docs`) and `initrepo` (`init`).
+- `internal/analyzers/`: Rumblestrip's analyzers. `layout` says which part of an app a package is.
+- `internal/lint/`: the golangci-lint and gitleaks configs apps run. An app never uses its own.
+- `internal/initrepo/files/`: the files `rumblestrip init` writes into an app.
+- `internal/platform/`: git, GitHub and the tools, each started in one place.
+- `.github/workflows/rumblestrip-*.yml`: the checks an app's CI calls. Their header comments say how they run.
+- `plugin/`: the Claude Code plugin, with its skills, rules and hooks. `plugin/bin/rumblestrip` runs the checks in the image the app pins, and `pr`, `app` and `init` on the host. Its header says how.
+- `template/`: the app template, its own module. Every proof starts from it, and it passes every gate.
+- `proof/`: runs every tool on the template and on each case. It also checks `docs/rules.md` against the cases and `tools.txt`.
+- `proof/cases/<case>/`: one violation, and the findings it must produce, in `want.txt` (`proof/doc.go` gives the format).
+- `tools.txt` and `Dockerfile`: every tool's pinned version, and the image that carries them. A push to main publishes the image as `sha-<commit>`.
 
 ## Rules
 
-- Rumblestrip is for one owner who reads the spec, never the code (ADR 9). When a check misses something, close the gap with another check, never with something more for the owner to read.
-- No config from memory: a rule enters `docs/rules.md` only once a case proves it, with the exact finding (tool, file, line, message).
-- A case that runs one tool only: mark it `!isolated` if it replaces a file others build on (go.mod).
-- Never run go-mutesting on `template`: it rewrites the source while tests run. The proof runs it on copies.
+- Rumblestrip is for one owner who reads the spec, never the code (ADR 9). When a check misses something, add a check, never more for the owner to read.
+- A rule enters `docs/rules.md` only once a case proves it, with the exact finding.
+- Mark a case `!isolated` if it replaces a file others build on, like go.mod.
+- Never run go-mutesting on `template`: it rewrites the source while tests run.
 - Rumblestrip passes its own rules: `golangci-lint run --config internal/lint/golangci.yml ./...` and rumblestrip-vet, for GOOS linux and windows.
-- Moving the `go` or `toolchain` line follows ADR 1; `go get x@latest` can move it silently, so check go.mod after any `go get`.
-- Everything in English. Conventional commits. Checks are Go, not scripts in another language.
-- People read `README.md`, `docs/guide.md` and `docs/setup.md`: plain words, no criterion IDs, within the word budgets `TestTheHumanDocsStayShort` enforces. The criteria go in `docs/rules.md`, within its own budget.
-- This repository's own ruleset is `.github/ruleset.json`, applied by hand: `gh api repos/McReaper/rumblestrip-go/rulesets/26266513 --method PUT --input .github/ruleset.json`. It requires the CI job `rumblestrip`: rename one, rename both.
+- `go get x@latest` can move the `go` line: check go.mod after it, and follow ADR 1.
+- Everything in English. Checks are Go, not scripts in another language. Conventional commits.
+- This repository's ruleset is `.github/ruleset.json`. Apply it with `gh api repos/McReaper/rumblestrip-go/rulesets/26266513 --method PUT --input .github/ruleset.json`. It requires the CI job `rumblestrip`, so renaming one means renaming both.
+
+## Writing
+
+- Short sentences, one idea each. No chains of colons or semicolons.
+- The owner reads `README.md`, `docs/guide.md` and `docs/setup.md`. Use plain words and no criterion IDs there.
+- `TestTheHumanDocsStayShort` sets each page's word budget. Before adding words to a page, cut some.
+- A doc states the rule and why. How it was found or measured goes in the commit.
 
 ## Commands
 
-- Everything, in the image as CI runs it: `docker build -t rumblestrip .`, then `docker run --rm -v "$PWD:/work" rumblestrip go test ./...`. Outside it, `go test ./...` needs the tools in `tools.txt` on the PATH (zizmor through `ZIZMOR=<path>` if pip put it elsewhere). The race proof is Linux only.
+- Everything, as CI runs it: `docker build -t rumblestrip .`, then `docker run --rm -v "$PWD:/work" rumblestrip go test ./...`.
+- Outside the image, `go test ./...` needs the tools in `tools.txt` on the PATH. Set `ZIZMOR=<path>` if pip put zizmor elsewhere. The race proof runs on Linux only.
 - One proof: `go test ./proof/ -run TestGuardReportsEveryCase`.

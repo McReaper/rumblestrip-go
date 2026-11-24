@@ -1,13 +1,14 @@
-// Package proof runs every tool Rumblestrip names on the trial project and
-// checks each one reports exactly what the trial's cases expect: nothing on
+// Package proof runs every tool Rumblestrip names on the template and
+// checks each one reports exactly what the cases expect: nothing on
 // the template, and each case's annotated findings on its violation.
 //
 // A case is a directory under proof/cases holding the files it adds to (or
 // replaces in) a copy of the template, and a want.txt listing its findings,
 // one per line:
 //
-//	<tool> <file>:<line> <regexp matching the message>
+//	<tool>/<rule> <file>:<line> <regexp matching the message>
 //
-// Lines starting with # are comments; "!isolated" runs the case alone
-// rather than with the others; "!delete <file>" removes a clean file first.
+// Lines starting with # are comments. "!isolated" runs the case alone,
+// rather than with the others. "!delete <file>" removes a clean file
+// first. "!expect-none <tool>" wants no finding from that tool.
 package proof
