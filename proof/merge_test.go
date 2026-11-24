@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/McReaper/rumblestrip-go/setup"
+	"github.com/McReaper/rumblestrip-go/internal/initrepo"
 )
 
 // WHY: a pull request of a stack takes no auto-merge, and GitHub rebases
@@ -148,11 +148,11 @@ func TestTheMergeJobMergesAsTheRepositorysAppOrSaysHowToGiveItOne(t *testing.T) 
 		t.Errorf("rumblestrip-check.yml's merge job uses the workflow's own token")
 	}
 	dir := t.TempDir()
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := setup.Write(dir, fs); err != nil {
+	if _, err := initrepo.Write(dir, fs); err != nil {
 		t.Fatal(err)
 	}
 	rumblestrip := jobs(t, filepath.Join(dir, ".github", "workflows", "rumblestrip.yml"))["pr"]

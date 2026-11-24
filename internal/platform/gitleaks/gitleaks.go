@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/McReaper/rumblestrip-go/internal/lint"
 	"github.com/McReaper/rumblestrip-go/internal/platform/run"
-	"github.com/McReaper/rumblestrip-go/lint"
 )
 
 // Leak is one secret gitleaks found.

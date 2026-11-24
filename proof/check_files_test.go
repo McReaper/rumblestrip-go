@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/McReaper/rumblestrip-go/setup"
+	"github.com/McReaper/rumblestrip-go/internal/initrepo"
 )
 
 // WHY: pip installs zizmor outside the PATH on Windows; rumblestrip check finds it
@@ -78,11 +78,11 @@ func TestKitCheckFailsOnAKitWorkflowItsKitVersionWouldNotWrite(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := changeOf(t, trialCase{name: "no change"})
-			fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
+			fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := setup.Write(dir, fs); err != nil {
+			if _, err := initrepo.Write(dir, fs); err != nil {
 				t.Fatal(err)
 			}
 			if out, code := kitRun(t, dir, "check", "--only", "rumblestrip-files,actionlint,zizmor"); code != 0 {

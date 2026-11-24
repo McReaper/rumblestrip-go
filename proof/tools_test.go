@@ -340,7 +340,7 @@ func atoi(t *testing.T, s string) int {
 // Rumblestrip makes does.
 func kitGitleaksConfig(t *testing.T) string {
 	t.Helper()
-	p, err := filepath.Abs("../lint/gitleaks.toml")
+	p, err := filepath.Abs("../internal/lint/gitleaks.toml")
 	if err != nil {
 		t.Fatal(err)
 	}

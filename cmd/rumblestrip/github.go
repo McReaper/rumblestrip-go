@@ -10,7 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/McReaper/rumblestrip-go/check"
+	"github.com/McReaper/rumblestrip-go/internal/check"
 )
 
 // WHY: GitHub shows ten error annotations a step and drops the rest, and

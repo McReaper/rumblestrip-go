@@ -13,7 +13,7 @@
 | Goroutine leaks in tests | `go.uber.org/goleak` | — |
 | Fakes | hand-written, implementing the interface | `golang/mock`, `go.uber.org/mock` |
 
-depguard enforces the denied column (`lint/golangci.yml`).
+depguard enforces the denied column (`internal/lint/golangci.yml`).
 
 ## Consequences
 

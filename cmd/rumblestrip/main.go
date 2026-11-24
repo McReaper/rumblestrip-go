@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/guard"
+	"github.com/McReaper/rumblestrip-go/internal/guard"
 	"github.com/spf13/cobra"
 )
 

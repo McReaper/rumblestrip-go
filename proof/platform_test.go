@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/McReaper/rumblestrip-go/guard"
-	"github.com/McReaper/rumblestrip-go/reread"
-	"github.com/McReaper/rumblestrip-go/setup"
+	"github.com/McReaper/rumblestrip-go/internal/guard"
+	"github.com/McReaper/rumblestrip-go/internal/initrepo"
+	"github.com/McReaper/rumblestrip-go/internal/staledocs"
 )
 
 type ruleset struct {
@@ -78,7 +78,7 @@ func TestTheKitsRulesetLetsOnlyTheOwnerMergeAnApprovedCheckedChange(t *testing.T
 // Rumblestrip's merge job can land the change.
 func TestTheAppsRulesetMergesAGreenChangeAndHoldsWhatIsTheOwners(t *testing.T) {
 	var r ruleset
-	readJSON(t, "../setup/files/ruleset.json", &r)
+	readJSON(t, "../internal/initrepo/files/ruleset.json", &r)
 	var types []string
 	for _, rule := range r.Rules {
 		types = append(types, rule.Type)
@@ -111,7 +111,7 @@ func TestTheAppsRulesetMergesAGreenChangeAndHoldsWhatIsTheOwners(t *testing.T) {
 func appCheck(t *testing.T) string {
 	t.Helper()
 	var caller []string
-	for _, body := range jobs(t, "../setup/files/rumblestrip.yml") {
+	for _, body := range jobs(t, "../internal/initrepo/files/rumblestrip.yml") {
 		if strings.Contains(body, "/rumblestrip-check.yml@") {
 			caller = append(caller, jobName(t, body))
 		}
@@ -166,8 +166,8 @@ func jobs(t *testing.T, path string) map[string]string {
 // show as skipped on the pull request.
 func TestTheOwnersApprovalReRunsTheMergeCheckFromAWorkflowOfItsOwn(t *testing.T) {
 	for path, want := range map[string][]string{
-		"../setup/files/rumblestrip.yml":          {"/rumblestrip-check.yml@", "    name: Pull request\n"},
-		"../setup/files/rumblestrip-approval.yml": {"/rumblestrip-approval.yml@", "actions: write", "statuses: read"},
+		"../internal/initrepo/files/rumblestrip.yml":          {"/rumblestrip-check.yml@", "    name: Pull request\n"},
+		"../internal/initrepo/files/rumblestrip-approval.yml": {"/rumblestrip-approval.yml@", "actions: write", "statuses: read"},
 	} {
 		js := jobs(t, path)
 		if len(js) != 1 {
@@ -181,7 +181,7 @@ func TestTheOwnersApprovalReRunsTheMergeCheckFromAWorkflowOfItsOwn(t *testing.T)
 			}
 		}
 	}
-	for path, trigger := range map[string]string{"../setup/files/rumblestrip.yml": "\n  pull_request:\n", "../setup/files/rumblestrip-approval.yml": "\n  pull_request_review:\n"} {
+	for path, trigger := range map[string]string{"../internal/initrepo/files/rumblestrip.yml": "\n  pull_request:\n", "../internal/initrepo/files/rumblestrip-approval.yml": "\n  pull_request_review:\n"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -198,7 +198,7 @@ func TestTheOwnersApprovalReRunsTheMergeCheckFromAWorkflowOfItsOwn(t *testing.T)
 // whose Check skips; and Check runs whatever the jobs before it did, so it
 // fails rather than skips.
 func TestTheRequiredCheckNeverSkips(t *testing.T) {
-	pr := jobs(t, "../setup/files/rumblestrip.yml")["pr"]
+	pr := jobs(t, "../internal/initrepo/files/rumblestrip.yml")["pr"]
 	if !strings.Contains(pr, "    if: github.event.action != 'edited' || github.event.changes.title || github.event.changes.base\n") {
 		t.Errorf("rumblestrip.yml's job runs on every edit:\n%s", pr)
 	}
@@ -231,7 +231,7 @@ func TestOnlyTheReviewSheetsJobPostsTheOwnersApproval(t *testing.T) {
 
 func TestTheTagRulesetLetsOnlyTheOwnerTagARelease(t *testing.T) {
 	var r ruleset
-	readJSON(t, "../setup/files/ruleset-tags.json", &r)
+	readJSON(t, "../internal/initrepo/files/ruleset-tags.json", &r)
 	if r.Target != "tag" || !slices.Equal(r.Conditions.RefName.Include, []string{"~ALL"}) {
 		t.Errorf("the ruleset must hold every tag: target %q, include %v", r.Target, r.Conditions.RefName.Include)
 	}
@@ -264,7 +264,7 @@ type claudeSettings struct {
 
 func initFiles(t *testing.T) map[string]string {
 	t.Helper()
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "OWNER", OwnerEmail: "1+OWNER@users.noreply.github.com"})
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "OWNER", OwnerEmail: "1+OWNER@users.noreply.github.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,11 +379,11 @@ func newLauncher(t *testing.T) launcher {
 	l := launcher{dir: t.TempDir(), fakes: t.TempDir(), tmp: t.TempDir(), commit: strings.Repeat("ab", 20)}
 	l.log = filepath.Join(l.tmp, "docker.log")
 	l.golog = filepath.Join(l.tmp, "go.log")
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.3.0", Commit: l.commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.3.0", Commit: l.commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := setup.Write(l.dir, fs); err != nil {
+	if _, err := initrepo.Write(l.dir, fs); err != nil {
 		t.Fatal(err)
 	}
 	gitIn(t, l.dir, "init", "-q")
@@ -635,11 +635,11 @@ func TestTheAppCodeOwnersHoldTheHarnessAndLeaveTheSpecToTheCheck(t *testing.T) {
 func TestTheCIKitInitWritesPassesTheWorkflowGates(t *testing.T) {
 	withZizmor(t)
 	dir := t.TempDir()
-	fs, err := setup.Files(setup.Options{Version: setup.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: strings.Repeat("ab", 20)}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := setup.Write(dir, fs); err != nil {
+	if _, err := initrepo.Write(dir, fs); err != nil {
 		t.Fatal(err)
 	}
 	gitIn(t, dir, "init", "-q")
@@ -761,8 +761,8 @@ func TestTheAppCodeOwnersLeaveTheRereadsToTheAgent(t *testing.T) {
 		lines[i] = strings.TrimSpace(lines[i])
 	}
 	harness := slices.Index(lines, "/.rumblestrip/ @OWNER")
-	free := slices.Index(lines, "/"+reread.File)
+	free := slices.Index(lines, "/"+staledocs.File)
 	if harness < 0 || free < harness {
-		t.Errorf("CODEOWNERS must list /%s with no owner after /.rumblestrip/:\n%s", reread.File, strings.Join(lines, "\n"))
+		t.Errorf("CODEOWNERS must list /%s with no owner after /.rumblestrip/:\n%s", staledocs.File, strings.Join(lines, "\n"))
 	}
 }

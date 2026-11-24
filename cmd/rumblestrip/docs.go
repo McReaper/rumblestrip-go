@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/McReaper/rumblestrip-go/reread"
+	"github.com/McReaper/rumblestrip-go/internal/staledocs"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +33,7 @@ func docsCommand(out io.Writer) *cobra.Command {
 }
 
 func runDocs(ctx context.Context, out io.Writer, o docsOptions) error {
-	findings, err := reread.Check(ctx, ".", o.base)
+	findings, err := staledocs.Check(ctx, ".", o.base)
 	if err != nil {
 		return fmt.Errorf("docs: %w", err)
 	}
@@ -51,7 +51,7 @@ func runDocs(ctx context.Context, out io.Writer, o docsOptions) error {
 	return nil
 }
 
-func docsText(findings []reread.Finding) string {
+func docsText(findings []staledocs.Finding) string {
 	if len(findings) == 0 {
 		return "No doc to reread in this change.\n"
 	}
@@ -62,7 +62,7 @@ func docsText(findings []reread.Finding) string {
 	return b.String()
 }
 
-func writeDocsJSON(out io.Writer, findings []reread.Finding) error {
+func writeDocsJSON(out io.Writer, findings []staledocs.Finding) error {
 	type row struct {
 		Rule    string `json:"rule"`
 		File    string `json:"file"`
@@ -83,7 +83,7 @@ func writeDocsJSON(out io.Writer, findings []reread.Finding) error {
 // ./README.md and docs\guide.md name the same lines as README.md and
 // docs/guide.md.
 func markReread(ctx context.Context, out io.Writer, args []string) error {
-	watched, err := reread.Watched(ctx, ".")
+	watched, err := staledocs.Watched(ctx, ".")
 	if err != nil {
 		return fmt.Errorf("docs reread: %w", err)
 	}
@@ -91,14 +91,14 @@ func markReread(ctx context.Context, out io.Writer, args []string) error {
 	for _, a := range args {
 		d := filepath.ToSlash(filepath.Clean(a))
 		if !slices.Contains(watched, d) {
-			return fmt.Errorf("docs reread: %s is no doc to reread: a markdown file of the repository, named from its root, that %s doesn't leave out", a, reread.File)
+			return fmt.Errorf("docs reread: %s is no doc to reread: a markdown file of the repository, named from its root, that %s doesn't leave out", a, staledocs.File)
 		}
 		docs = append(docs, d)
 	}
-	if err := reread.Mark(".", docs, time.Now().Format(time.DateOnly)); err != nil {
+	if err := staledocs.Mark(".", docs, time.Now().Format(time.DateOnly)); err != nil {
 		return fmt.Errorf("docs reread: %w", err)
 	}
-	if _, err := fmt.Fprintf(out, "Reread: %s. Commit %s with the change.\n", strings.Join(docs, ", "), reread.File); err != nil {
+	if _, err := fmt.Fprintf(out, "Reread: %s. Commit %s with the change.\n", strings.Join(docs, ", "), staledocs.File); err != nil {
 		return fmt.Errorf("docs reread: %w", err)
 	}
 	return nil

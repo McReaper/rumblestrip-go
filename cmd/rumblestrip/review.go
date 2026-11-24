@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/guard"
-	"github.com/McReaper/rumblestrip-go/review"
+	"github.com/McReaper/rumblestrip-go/internal/guard"
+	"github.com/McReaper/rumblestrip-go/internal/review"
 	"github.com/spf13/cobra"
 )
 

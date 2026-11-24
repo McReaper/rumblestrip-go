@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kitcheck "github.com/McReaper/rumblestrip-go/check"
+	kitcheck "github.com/McReaper/rumblestrip-go/internal/check"
 )
 
 // WHY: CI runs each gate in a job of its own, which the checks list names

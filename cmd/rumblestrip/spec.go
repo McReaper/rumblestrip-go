@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/McReaper/rumblestrip-go/spec"
+	"github.com/McReaper/rumblestrip-go/internal/spec"
 	"github.com/spf13/cobra"
 )
 
