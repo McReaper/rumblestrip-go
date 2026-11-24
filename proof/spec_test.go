@@ -13,7 +13,7 @@ const specTool = "spec/"
 
 func specFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip"), "spec", "--json")
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), "spec", "--json")
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()
@@ -34,7 +34,7 @@ func specFindings(t *testing.T, dir string) []finding {
 // WHY: the owner approves scenarios, not the steps that run them; a step
 // that passes whatever it is told to expect would make the approval a
 // sentence no program honours.
-func TestKitSpecReportsEveryCase(t *testing.T) {
+func TestSpecReportsEveryCase(t *testing.T) {
 	for _, c := range loadCases(t) {
 		if !c.uses(specTool) {
 			continue
@@ -50,8 +50,8 @@ func TestKitSpecReportsEveryCase(t *testing.T) {
 
 // WHY: steps that don't compile are the change's to fix: the spec reports
 // the compiler's error at its line, as a finding the agent fixes, never as
-// a gate that could not run, which reads as the kit's fault.
-func TestKitSpecReportsStepsThatDontCompileAsTheChanges(t *testing.T) {
+// a gate that could not run, which reads as Rumblestrip's fault.
+func TestSpecReportsStepsThatDontCompileAsTheChanges(t *testing.T) {
 	dir := changeOf(t, trialCase{name: "no change"})
 	steps := filepath.Join(dir, "features", "notes_test.go")
 	data, err := os.ReadFile(steps)

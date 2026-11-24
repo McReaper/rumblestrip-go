@@ -208,7 +208,7 @@ type gitleaksLeak struct {
 
 func gitleaksFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	out := runIn(t, place{dir, []int{1}}, "gitleaks", "dir", ".", "--no-banner", "--redact", "--config", kitGitleaksConfig(t), "-f", "json", "-r", "-")
+	out := runIn(t, place{dir, []int{1}}, "gitleaks", "dir", ".", "--no-banner", "--redact", "--config", rumblestripGitleaksConfig(t), "-f", "json", "-r", "-")
 	var leaks []gitleaksLeak
 	if err := json.Unmarshal(out, &leaks); err != nil {
 		t.Fatalf("gitleaks: %v\n%s", err, out)
@@ -338,7 +338,7 @@ func atoi(t *testing.T, s string) int {
 
 // WHY: the proof runs gitleaks with the config rumblestrip embeds, as every scan
 // Rumblestrip makes does.
-func kitGitleaksConfig(t *testing.T) string {
+func rumblestripGitleaksConfig(t *testing.T) string {
 	t.Helper()
 	p, err := filepath.Abs("../internal/lint/gitleaks.toml")
 	if err != nil {

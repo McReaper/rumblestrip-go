@@ -38,7 +38,7 @@ func build(cmds ...string) error {
 	return nil
 }
 
-func kitCommand(t *testing.T, name string) string {
+func built(t *testing.T, name string) string {
 	t.Helper()
 	if buildErr != nil {
 		t.Fatal(buildErr)

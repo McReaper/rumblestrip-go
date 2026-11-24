@@ -2,7 +2,7 @@
 // checks each one reports exactly what the trial's cases expect: nothing on
 // the template, and each case's annotated findings on its violation.
 //
-// A case is a directory under trial/cases holding the files it adds to (or
+// A case is a directory under proof/cases holding the files it adds to (or
 // replaces in) a copy of the template, and a want.txt listing its findings,
 // one per line:
 //

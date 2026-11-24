@@ -110,7 +110,7 @@ func TestEveryEnabledLinterHasACase(t *testing.T) {
 	}
 	for _, l := range runGolangci(t, cleanDir, "linux").Report.Linters {
 		if l.Enabled && !proven[l.Name] && l.Name != "typecheck" {
-			t.Errorf("linter %s is enabled but no case under trial/cases proves it fires", l.Name)
+			t.Errorf("linter %s is enabled but no case under proof/cases proves it fires", l.Name)
 		}
 	}
 }

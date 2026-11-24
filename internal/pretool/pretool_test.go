@@ -7,7 +7,7 @@ import (
 	"github.com/McReaper/rumblestrip-go/internal/pretool"
 )
 
-func TestTheGesturesPastTheKitsJudgementAreRefused(t *testing.T) {
+func TestTheGesturesPastRumblestripsJudgementAreRefused(t *testing.T) {
 	for _, line := range []string{
 		"gh pr merge 12 --squash",
 		"git push --force origin feat/x",

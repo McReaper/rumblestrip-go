@@ -31,10 +31,10 @@ func TestPSScriptAnalyzerReportsEveryCase(t *testing.T) {
 	proveCases(t, psTool, psFindings)
 }
 
-func TestKitCheckFailsOnAPowerShellScript(t *testing.T) {
+func TestCheckFailsOnAPowerShellScript(t *testing.T) {
 	withZizmor(t)
 	dir := changeOf(t, caseNamed(t, "ps-script"))
-	out, code := kitRun(t, dir, "check", "--base", "base", "--race=false")
+	out, code := runRumblestrip(t, dir, "check", "--base", "base", "--race=false")
 	for _, want := range []string{
 		"FAIL psscriptanalyzer\n", "scripts/install.ps1:7: PSAvoidUsingInvokeExpression",
 	} {
@@ -52,7 +52,7 @@ func TestKitCheckFailsOnAPowerShellScript(t *testing.T) {
 
 // WHY: tools.txt is what CI installs and what the doc names; the versions
 // Rumblestrip runs must be those.
-func TestTheKitRunsTheVersionsToolsTxtPins(t *testing.T) {
+func TestRumblestripRunsTheVersionsToolsTxtPins(t *testing.T) {
 	data, err := os.ReadFile("../tools.txt")
 	if err != nil {
 		t.Fatal(err)

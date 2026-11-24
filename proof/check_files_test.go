@@ -20,7 +20,7 @@ func withZizmor(t *testing.T) {
 
 // WHY: an app's CI runs rumblestrip check alone; a workflow, a script or a secret
 // the Go gates never read must fail it too.
-func TestKitCheckFailsOnAWorkflowAScriptAndASecret(t *testing.T) {
+func TestCheckFailsOnAWorkflowAScriptAndASecret(t *testing.T) {
 	withZizmor(t)
 	dir := changeOf(t, caseNamed(t, "ci-workflow"))
 	for _, name := range []string{"sh-script", "s1-secrets"} {
@@ -28,7 +28,7 @@ func TestKitCheckFailsOnAWorkflowAScriptAndASecret(t *testing.T) {
 	}
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-q", "-m", "a workflow, a script and a secret")
-	out, code := kitRun(t, dir, "check", "--base", "base", "--race=false")
+	out, code := runRumblestrip(t, dir, "check", "--base", "base", "--race=false")
 	for _, want := range []string{
 		"FAIL actionlint\n", "is potentially untrusted",
 		"FAIL zizmor\n", "template-injection: code injection via template expansion",
@@ -50,7 +50,7 @@ func TestKitCheckFailsOnAWorkflowAScriptAndASecret(t *testing.T) {
 // WHY: an app keeps rumblestrip.yml and rumblestrip-approval.yml, pinned to a rumblestrip
 // version; once that version needs them otherwise, a permission more or a
 // file more, the app's own check says so and rumblestrip init writes them again.
-func TestKitCheckFailsOnAKitWorkflowItsKitVersionWouldNotWrite(t *testing.T) {
+func TestCheckFailsOnAWorkflowItsRumblestripVersionWouldNotWrite(t *testing.T) {
 	withZizmor(t)
 	for _, c := range []struct {
 		name string
@@ -85,11 +85,11 @@ func TestKitCheckFailsOnAKitWorkflowItsKitVersionWouldNotWrite(t *testing.T) {
 			if _, err := initrepo.Write(dir, fs); err != nil {
 				t.Fatal(err)
 			}
-			if out, code := kitRun(t, dir, "check", "--only", "rumblestrip-files,actionlint,zizmor"); code != 0 {
+			if out, code := runRumblestrip(t, dir, "check", "--only", "rumblestrip-files,actionlint,zizmor"); code != 0 {
 				t.Fatalf("what rumblestrip init wrote: exit %d\n%s", code, out)
 			}
 			c.edit(t, dir)
-			out, code := kitRun(t, dir, "check", "--only", "rumblestrip-files")
+			out, code := runRumblestrip(t, dir, "check", "--only", "rumblestrip-files")
 			if code != 1 || !strings.Contains(out, "FAIL rumblestrip files\n") || !strings.Contains(out, c.says) {
 				t.Errorf("exit %d\n%s", code, out)
 			}

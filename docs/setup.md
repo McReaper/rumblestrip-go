@@ -32,6 +32,6 @@ The plugin runs the agent's checks in Rumblestrip's image, through Docker: every
 
 ## Harder to undo: managed settings
 
-The agent could edit `.claude/settings.json`. To stop that, copy [`platform/claude/managed-settings.json`](../platform/claude/managed-settings.json) to the machine's managed settings: `C:\Program Files\ClaudeCode\managed-settings.json` on Windows, `/Library/Application Support/ClaudeCode/` on macOS, `/etc/claude-code/` on Linux. No other settings override it.
+The agent could edit `.claude/settings.json`. To stop that, copy [`managed-settings.json`](managed-settings.json) to the machine's managed settings: `C:\Program Files\ClaudeCode\managed-settings.json` on Windows, `/Library/Application Support/ClaudeCode/` on macOS, `/etc/claude-code/` on Linux. No other settings override it.
 
 Settings and hooks only slow the agent down; GitHub's rules are what hold.

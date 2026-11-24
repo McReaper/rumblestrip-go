@@ -10,7 +10,7 @@ import (
 
 var livedLine = regexp.MustCompile(`^([^:]+):(\d+): lived: [^:]+: (.*)$`)
 
-func kitMutateFindings(t *testing.T, out string) []finding {
+func mutateFindings(t *testing.T, out string) []finding {
 	t.Helper()
 	var findings []finding
 	for line := range strings.Lines(out) {
@@ -32,9 +32,9 @@ func kitMutateFindings(t *testing.T, out string) []finding {
 // the change while old code's survivors don't.
 // WHY: on GitHub the owner reads mutation like the other checks: each
 // change the tests missed, at its line, in the run's summary.
-func TestKitMutateWritesItsLinesAndItsSectionOfTheSummary(t *testing.T) {
+func TestMutateWritesItsLinesAndItsSectionOfTheSummary(t *testing.T) {
 	summaryDir := t.TempDir()
-	out, code := kitRun(t, changeOf(t, caseNamed(t, "m6-weak-test")), "mutate", "--base", "base", "--github", "--summary", summaryDir)
+	out, code := runRumblestrip(t, changeOf(t, caseNamed(t, "m6-weak-test")), "mutate", "--base", "base", "--github", "--summary", summaryDir)
 	if code != 1 || !regexp.MustCompile(`(?m)^::error file=[^,]+\.go,line=\d+,title=Mutation::the tests still pass when a change `).MatchString(out) {
 		t.Errorf("exit %d; no annotation of a lived mutant:\n%s", code, out)
 	}
@@ -48,18 +48,18 @@ func TestKitMutateWritesItsLinesAndItsSectionOfTheSummary(t *testing.T) {
 	}
 }
 
-func TestKitMutateFailsAChangeItsTestsDontPin(t *testing.T) {
+func TestMutateFailsAChangeItsTestsDontPin(t *testing.T) {
 	c := caseNamed(t, "m6-weak-test")
-	out, code := kitRun(t, changeOf(t, c), "mutate", "--base", "base")
+	out, code := runRumblestrip(t, changeOf(t, c), "mutate", "--base", "base")
 	if code != 1 || !strings.Contains(out, "killed 4 of the 7 mutants") {
 		t.Errorf("a weak test: exit %d\n%s", code, out)
 	}
-	check(t, wantsOf("mutesting/", c), kitMutateFindings(t, out))
-	out, code = kitRun(t, changeOf(t, trialCase{name: "no change"}), "mutate", "--base", "base")
+	check(t, wantsOf("mutesting/", c), mutateFindings(t, out))
+	out, code = runRumblestrip(t, changeOf(t, trialCase{name: "no change"}), "mutate", "--base", "base")
 	if code != 0 || !strings.Contains(out, "killed 0 of the 0 mutants") {
 		t.Errorf("no change: exit %d\n%s", code, out)
 	}
-	out, code = kitRun(t, changeOf(t, c), "mutate", "--base", "base", "--min", "0.5")
+	out, code = runRumblestrip(t, changeOf(t, c), "mutate", "--base", "base", "--min", "0.5")
 	if code != 0 {
 		t.Errorf("a weak test under a lower bar: exit %d\n%s", code, out)
 	}

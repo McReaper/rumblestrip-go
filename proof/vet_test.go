@@ -28,7 +28,7 @@ type vetDiagnostic struct {
 
 func runVet(t *testing.T, dir, goos string) map[string]map[string]json.RawMessage {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), kitCommand(t, "rumblestrip-vet"), "-json", "./...")
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip-vet"), "-json", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOFLAGS=-mod=readonly")
 	out, err := cmd.Output()
@@ -116,7 +116,7 @@ func TestEveryAnalyzerHasACase(t *testing.T) {
 	}
 	for _, a := range all.Analyzers() {
 		if !proven[a.Name] {
-			t.Errorf("analyzer %s has no case under trial/cases proving it fires on the trial", a.Name)
+			t.Errorf("analyzer %s has no case under proof/cases proving it fires on the trial", a.Name)
 		}
 	}
 }

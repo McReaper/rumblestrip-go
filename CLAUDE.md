@@ -16,7 +16,7 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - `internal/pr/` — `rumblestrip pr create` and `pr stack`: an agent's pull request, its title as the check wants it, stacked on its base's.
 - `internal/archtest/` — architecture rules over go/packages.
 - `internal/platform/git` — the one place Rumblestrip starts git; `internal/platform/ghapi` — GitHub's REST API, through gh.
-- `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `trial/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
+- `template/` — the app template (`gonew github.com/McReaper/rumblestrip-go/template`), its own module, and the trial every proof starts from: passes every gate. `proof/cases/<case>/` — one deliberate violation, the files it adds or replaces, and `want.txt` (`<tool>/<rule> <file>:<line> <regexp>`; `!isolated`, `!delete <file>`, `!expect-none <tool>`).
 - `proof/` — runs every tool on the trial and compares with each `want.txt`; also checks `docs/rumblestrip.md` against the cases and `tools.txt`.
 - `tools.txt` — every tool's pinned version; the image installs exactly these.
 - `Dockerfile` — Rumblestrip's image: Go at go.mod's toolchain, the tools in `tools.txt`, `rumblestrip`. CI builds it and runs every check in it; a push to main publishes it on GHCR as `sha-<commit>`. Trivy gates it on findings with a fix; `.trivyignore.yaml` holds those that don't apply, each with why.
@@ -31,7 +31,7 @@ Rumblestrip: the rails AI-written Go stays on. `docs/rumblestrip.md` holds every
 - Moving the `go` or `toolchain` line follows ADR 1; `go get x@latest` can move it silently, so check go.mod after any `go get`.
 - Everything in English. Conventional commits. Checks are Go, not scripts in another language.
 - People read `README.md`, `docs/guide.md` and `docs/setup.md`: plain words, no criterion IDs, within the word budgets `TestTheHumanDocsStayShort` enforces. The criteria go in `docs/rumblestrip.md`.
-- This repository's own ruleset is `platform/ruleset-rumblestrip.json`, applied by hand: `gh api repos/McReaper/rumblestrip-go/rulesets --method POST --input platform/ruleset-rumblestrip.json`. Its CI job stays `kit`, the context it requires.
+- This repository's own ruleset is `.github/ruleset.json`, applied by hand: `gh api repos/McReaper/rumblestrip-go/rulesets/26266513 --method PUT --input .github/ruleset.json`. It requires the CI job `rumblestrip`: rename one, rename both.
 
 ## Commands
 

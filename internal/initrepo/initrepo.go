@@ -173,17 +173,17 @@ var (
 )
 
 // WorkflowsFor returns the workflows rumblestrip init writes for the pin and the
-// owner kitYML, a repository's rumblestrip.yml, holds: what its rumblestrip.yml and
+// owner rumblestripYML, a repository's rumblestrip.yml, holds: what its rumblestrip.yml and
 // rumblestrip-approval.yml must be.
 //
 // WHY: a Rumblestrip version may need other workflows, a trigger or a permission
 // more; the repository's, pinned to that version, can't say so itself.
-func WorkflowsFor(kitYML []byte) ([]File, error) {
-	m := pin.FindSubmatch(kitYML)
+func WorkflowsFor(rumblestripYML []byte) ([]File, error) {
+	m := pin.FindSubmatch(rumblestripYML)
 	if m == nil {
 		return nil, errors.New("rumblestrip.yml pins no rumblestrip commit and release (rumblestrip-check.yml@<commit> # <tag>)")
 	}
-	owner := ownerLine.FindSubmatch(kitYML)
+	owner := ownerLine.FindSubmatch(rumblestripYML)
 	if owner == nil {
 		return nil, errors.New("rumblestrip.yml names no owner (owner: <login>, under with:)")
 	}
