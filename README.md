@@ -69,7 +69,7 @@ A team gives something up: review is how people learn the code, and some teams n
 
 ## 📥 Set it up
 
-In a Go repository on GitHub, with Go and the `gh` CLI:
+In a Go repository on GitHub, with Go, Docker and the `gh` CLI:
 
 ```sh
 go install github.com/McReaper/rumblestrip-go/cmd/rumblestrip@latest
@@ -78,7 +78,7 @@ rumblestrip init app --name <agent name>       # once: the agent's GitHub App; i
 rumblestrip init github --repo <you>/<repo>    # the rules GitHub enforces, with the App's RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY
 ```
 
-Then open Claude Code in the repository and ask for a feature. A new app can start from the [template](template).
+Then open Claude Code in the repository, run `/rumblestrip:setup` once, and ask for a feature. A new app can start from the [template](template).
 
 ## 📚 Docs
 

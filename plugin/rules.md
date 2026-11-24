@@ -1,6 +1,7 @@
 This repository is built on Rumblestrip (github.com/McReaper/rumblestrip-go): its checks judge every change, and only the owner can change them.
 
 Commands (`rumblestrip` runs the version the repository pins):
+- `rumblestrip setup`: pulls the image the checks run in, for the version the repository pins; until it has, the hooks refuse every command and edit.
 - `rumblestrip check`: every gate the merge check runs, the same as CI. Run it before you stop.
 - `rumblestrip spec`: each built scenario of `features/` passes alone, and fails once a value its `Then` steps expect is altered.
 - `rumblestrip mutate`: the tests must kill the mutants of the lines you changed.

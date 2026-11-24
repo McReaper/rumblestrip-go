@@ -90,6 +90,13 @@ jobs:
           git init -q
           mkdir -p .github/workflows
           echo "    uses: McReaper/rumblestrip-go/.github/workflows/rumblestrip-check.yml@$GITHUB_SHA" > .github/workflows/rumblestrip.yml
+          # Until the pin's image is on the machine, a hook refuses and says
+          # how to set it up.
+          code=0
+          printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"go test ./..."}}' "$app" |
+            "$launcher" hook pre-tool 2> "$RUNNER_TEMP/refusal" || code=$?
+          test "$code" = 2
+          grep -q "run rumblestrip setup" "$RUNNER_TEMP/refusal"
           docker tag rumblestrip:ci "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
           # A refusal comes back through docker exec: its exit code and its words.
           code=0
@@ -101,6 +108,14 @@ jobs:
           printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s/internal/notes/internal/add/add.go"}}' "$app" "$app" |
             "$launcher" hook post-edit
           docker ps --filter name=rumblestrip- --format '{{.Image}}' | grep -qx "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
+          # In a linked worktree, git in the container reads the main
+          # checkout's git directory.
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -q -m app
+          base=$(git rev-parse HEAD)
+          git worktree add -q -b worktree "$RUNNER_TEMP/worktree"
+          cd "$RUNNER_TEMP/worktree"
+          "$launcher" guard --base "$base"
 
       # The gates block on a finding with a fixed version: an Ubuntu package,
       # which the daily apt layer picks up, and anything critical. The rest
