@@ -1,0 +1,4 @@
+# M6: a change adds two refusals to a slice. A scenario reaches the second; no scenario reaches the
+# first, so the owner never approved it. The added error return that only a failing call reaches is
+# left out, as mutation leaves it out.
+spec/spec-unreached internal/notes/internal/add/add.go:52 no scenario reaches this, so the owner never approved what it does

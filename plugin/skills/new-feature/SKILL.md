@@ -43,7 +43,7 @@ Then wire it in the module's contract, `internal/<module>/<module>.go`: `Registe
 
 ## 4. Check before you stop
 
-- `rumblestrip check`: every gate. It runs `rumblestrip spec`, which runs each built scenario alone, then once per value its `Then` steps expect, that value altered: it must pass as written and fail altered. A step that passes whatever it is told checks nothing.
+- `rumblestrip check`: every gate. It runs `rumblestrip spec`, which runs each built scenario alone, then once per value its `Then` steps expect, that value altered: it must pass as written and fail altered. A step that passes whatever it is told checks nothing. Every line you add to a slice or the domain must run in a scenario as written: one that none runs is behaviour the owner hasn't approved, a refusal, a limit or a default they never read. Give it a scenario, a spec change they approve, or remove it.
 - `rumblestrip mutate`: the new lines' mutants must die. A mutant that lives is a behaviour no test pins: add the test, or delete the code if nothing needs it.
 - `rumblestrip review`: the sheet the owner reads. On the build's pull request it says there is nothing for them.
 

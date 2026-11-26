@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strings"
 
 	"github.com/McReaper/rumblestrip-go/internal/guard"
 	"github.com/McReaper/rumblestrip-go/internal/platform/modcopy"
@@ -58,16 +57,7 @@ type Lines map[string][]int
 // Changed returns the lines d adds to production Go files: tests,
 // testdata and deleted files left out.
 func Changed(d guard.Diff) Lines {
-	out := Lines{}
-	for _, f := range d.Files {
-		if f.Status == 'D' || path.Ext(f.Path) != ".go" || strings.HasSuffix(f.Path, "_test.go") || strings.Contains("/"+f.Path, "/testdata/") {
-			continue
-		}
-		for _, l := range f.Added {
-			out[f.Path] = append(out[f.Path], l.N)
-		}
-	}
-	return out
+	return d.AddedLines(guard.IsProductionGo)
 }
 
 // Packages returns the directories of the files in changed, as ./dir

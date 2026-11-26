@@ -140,7 +140,11 @@ func nonEmpty(text []byte) []string {
 }
 
 func specGate(ctx context.Context, o Options) Result {
-	fs, err := spec.Prove(ctx, o.Dir)
+	d, err := guard.Read(ctx, o.Dir, o.Base)
+	if err != nil {
+		return failed(err)
+	}
+	fs, err := spec.Prove(ctx, o.Dir, d.AddedLines(spec.Reachable))
 	if err != nil {
 		return failed(err)
 	}

@@ -137,6 +137,10 @@ Drift: hollow tests, written to pass or changed to pass.
   - The spec is Gherkin under `features/`, run by godog on the built program.
   - `rumblestrip spec` runs each scenario alone. Then it runs it again once for each value its `Then` steps expect, with that value altered, and that run must fail.
   - Proof: `spec-proof`, `spec-untested`, `TestSpecReportsEveryCase`.
+- **The spec runs what a change adds.**
+  - `rumblestrip spec` builds the program with coverage for the scenarios as written. A line the change adds to a slice or the domain that no scenario runs is behaviour the owner never approved, and fails.
+  - An `if err != nil { return … }` is left out, as mutation leaves it out (ADR 4). The infra, the wiring and the platform stay the unit tests'.
+  - Proof: `spec-unreached`.
 - **The program people run is tested.**
   - The template's smoke test calls every MCP tool and CLI command of the built program with its declared example.
   - Proof: `m6-broken-program`, `TestTheTemplatesTestsReportEveryCase`.

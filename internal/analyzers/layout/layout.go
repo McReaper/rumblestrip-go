@@ -36,13 +36,25 @@ func IsContract(pkg *types.Package) bool {
 
 // IsDomain reports whether pkg is part of a module's pure domain.
 func IsDomain(pkg *types.Package) bool {
-	return domainPath.MatchString(pkg.Path())
+	return IsDomainPath(pkg.Path())
+}
+
+// IsDomainPath is IsDomain for a package's import path or its directory
+// from the module's root.
+func IsDomainPath(p string) bool {
+	return domainPath.MatchString(p)
 }
 
 // IsSlice reports whether pkg is a vertical slice: a module's inside that is
 // neither its domain nor its infra.
 func IsSlice(pkg *types.Package) bool {
-	m := innerPath.FindStringSubmatch(pkg.Path())
+	return IsSlicePath(pkg.Path())
+}
+
+// IsSlicePath is IsSlice for a package's import path or its directory
+// from the module's root.
+func IsSlicePath(p string) bool {
+	m := innerPath.FindStringSubmatch(p)
 	return m != nil && m[2] != "domain" && m[2] != "infra"
 }
 
