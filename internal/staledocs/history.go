@@ -24,6 +24,7 @@ const uncommitted = "0000000000000000000000000000000000000000"
 type history struct {
 	dir         string
 	root        *os.Root
+	base        string
 	before, now map[string]entry
 }
 

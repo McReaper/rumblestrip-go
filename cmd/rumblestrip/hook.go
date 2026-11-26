@@ -107,11 +107,11 @@ func sessionStartHook(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("Rumblestrip: docs to reread in this change, the oldest first:\n")
+	b.WriteString("Rumblestrip: a change to the code here rereads these docs, the oldest first:\n")
 	for _, d := range docs {
 		b.WriteString("- " + d.Path + " " + d.Since() + "\n")
 	}
-	b.WriteString("Reread each against the code, fix what no longer holds, then run rumblestrip docs reread <doc>. The Docs check holds the change until then.\n")
+	b.WriteString("Once your change touches the code, reread each against it, fix what no longer holds, then run rumblestrip docs reread <doc>. The Docs check holds such a change until then; a change with no code owes nothing.\n")
 	if _, err := io.WriteString(cmd.OutOrStdout(), b.String()); err != nil {
 		return fmt.Errorf("write the docs to reread: %w", err)
 	}
@@ -119,13 +119,16 @@ func sessionStartHook(cmd *cobra.Command, _ []string) error {
 }
 
 // WHY: a session must start whatever git says, so a failure owes nothing
-// here: the Docs gate tells the agent again before it stops.
+// here: the Docs gate tells the agent again before it stops. At the start
+// nothing has changed yet, so the docs come as what a change to the code
+// will owe.
 func docsOwed(ctx context.Context, dir string) []staledocs.Doc {
 	r, err := staledocs.Status(ctx, dir, "origin/main")
 	if err != nil {
 		return nil
 	}
-	return r.Required()
+	owed := r.Owed()
+	return owed[:min(len(owed), staledocs.PerChange)]
 }
 
 // WHY: Claude Code refuses the tool call on exit code 2 and shows the agent

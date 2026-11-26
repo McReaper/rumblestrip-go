@@ -91,11 +91,19 @@ func (c *code) lineCount(p string) int {
 	return n
 }
 
+func (c *code) changedSince(ctx context.Context, commit string) (int, error) {
+	changed, err := c.linesSince(ctx, commit)
+	if err != nil || c.lines == 0 {
+		return 0, err
+	}
+	return changed * 100 / c.lines, nil
+}
+
 // WHY: the lines added and removed both count, so rewriting a function
 // counts twice its size: it changed that much of what a doc may say.
-func (c *code) changedSince(ctx context.Context, commit string) (int, error) {
-	if pct, ok := c.since[commit]; ok {
-		return pct, nil
+func (c *code) linesSince(ctx context.Context, commit string) (int, error) {
+	if n, ok := c.since[commit]; ok {
+		return n, nil
 	}
 	out, err := git.Run(ctx, c.dir, "diff", "--numstat", "-z", "--no-renames", commit, "--", "*.go")
 	if err != nil {
@@ -109,12 +117,8 @@ func (c *code) changedSince(ctx context.Context, commit string) (int, error) {
 		}
 		changed += n
 	}
-	pct := 0
-	if c.lines > 0 {
-		pct = changed * 100 / c.lines
-	}
-	c.since[commit] = pct
-	return pct, nil
+	c.since[commit] = changed
+	return changed, nil
 }
 
 func (c *code) numstatLines(rec string) (int, error) {

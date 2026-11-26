@@ -30,9 +30,11 @@ type Doc struct {
 }
 
 // Report is where each watched doc stands for the change from base's merge
-// base to the working tree.
+// base to the working tree, and how many lines of code that change adds or
+// removes.
 type Report struct {
 	Docs []Doc
+	Code int
 }
 
 // Owed returns the due docs the change doesn't reread, the oldest first:
@@ -52,7 +54,14 @@ func (r Report) Owed() []Doc {
 
 // Required returns the docs the change must still reread: the oldest it
 // owes, PerChange at most, counting the due docs it already rereads.
+//
+// WHY: a change that touches no code gives a doc nothing new to be wrong
+// about, so it owes nothing: a dependency's update, a doc's fix, or a
+// session that hasn't changed anything yet.
 func (r Report) Required() []Doc {
+	if r.Code == 0 {
+		return nil
+	}
 	reread := 0
 	for _, d := range r.Docs {
 		if d.Due && d.Here {
@@ -108,8 +117,8 @@ func Status(ctx context.Context, dir, base string) (r Report, err error) {
 		return Report{}, fmt.Errorf("open %s: %w", dir, err)
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	h := &history{dir: dir, root: root}
-	if h.before, err = h.rereadsAt(ctx, strings.TrimSpace(mb)); err != nil {
+	h := &history{dir: dir, root: root, base: strings.TrimSpace(mb)}
+	if h.before, err = h.rereadsAt(ctx, h.base); err != nil {
 		return Report{}, err
 	}
 	var skips []string
@@ -129,6 +138,9 @@ func (h *history) report(ctx context.Context, docs []string) (Report, error) {
 		return Report{}, err
 	}
 	var r Report
+	if r.Code, err = c.linesSince(ctx, h.base); err != nil {
+		return Report{}, err
+	}
 	for _, p := range docs {
 		d, err := h.doc(ctx, c, p)
 		if err != nil {
