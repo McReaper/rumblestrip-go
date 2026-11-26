@@ -16,9 +16,3 @@ Feature: Notes
   Scenario: An agent adds a note over MCP, then finds it in the list
     When an agent adds the note "Groceries"
     Then the agent's list shows the note "Groceries"
-
-  @wip
-  Scenario: A deleted note leaves the list
-    Given the note "Groceries"
-    When I delete the note "Groceries"
-    Then the list shows 0 notes

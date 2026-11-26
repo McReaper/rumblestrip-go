@@ -17,10 +17,14 @@ var (
 // Harness is what tells the agent how to work and the merge check how to
 // judge it: a change to it is the owner's to approve. An app's CODEOWNERS
 // names the same paths, so GitHub holds them even if the check is broken.
-// A path ending in / is a directory from the root; GLOSSARY.md is any
-// module's.
+// A path ending in / is a directory from the root.
+//
+// WHY: a module's glossary is the agent's: it says what the code's types
+// are, a test checks it names each one, and the Docs check has it reread.
+// Held for the owner, a fix to it made a change that needed nothing else
+// of them wait (the sandbox's first run).
 func Harness() []string {
-	return []string{".github/", ".claude/", ".rumblestrip/", "AGENTS.md", "CLAUDE.md", "docs/adr/", "GLOSSARY.md"}
+	return []string{".github/", ".claude/", ".rumblestrip/", "AGENTS.md", "CLAUDE.md", "docs/adr/"}
 }
 
 // Free lists the files of the harness the agent changes without the
@@ -36,7 +40,7 @@ func isHarness(p string) bool {
 	}
 	for _, h := range Harness() {
 		switch {
-		case strings.HasSuffix(h, "/") && strings.HasPrefix(p, h), p == h, h == "GLOSSARY.md" && path.Base(p) == h:
+		case strings.HasSuffix(h, "/") && strings.HasPrefix(p, h), p == h:
 			return true
 		}
 	}
@@ -87,10 +91,8 @@ func harnessKind(p string) string {
 		return "the agent's settings"
 	case p == "AGENTS.md" || p == "CLAUDE.md":
 		return "the agent's instructions"
-	case strings.HasPrefix(p, "docs/adr/"):
-		return "a decision record"
 	}
-	return "a module's glossary"
+	return "a decision record"
 }
 
 func statusWord(s byte) string {

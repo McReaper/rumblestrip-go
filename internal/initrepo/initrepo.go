@@ -85,11 +85,7 @@ func renderAll(o Options, fs []struct{ path, from string }) ([]File, error) {
 func codeOwned() []string {
 	var out []string
 	for _, h := range guard.Harness() {
-		if h == "GLOSSARY.md" {
-			out = append(out, "**/"+h)
-		} else {
-			out = append(out, "/"+h)
-		}
+		out = append(out, "/"+h)
 	}
 	return out
 }

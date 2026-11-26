@@ -7,7 +7,7 @@
 
 **The spec.** Read these scenarios in the pull request's files:
 
-- The notes export as Markdown, added (`features/notes.feature:27`)
+- The notes export as Markdown, added (`features/notes.feature:21`)
 
 **Also yours to approve:**
 
