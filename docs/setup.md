@@ -24,7 +24,7 @@ With the App's `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`, it checks 
 - **The default branch** takes changes only through a pull request, squash-merged. It needs two checks, both from GitHub Actions: `Pull request / Check`, every check passed, and `Rumblestrip / Owner approval`, your approval of what is yours.
 - **Tags and releases**: only you create or move a tag, and a published release can't change.
 - **The App's secrets**: its Client ID and key, so Rumblestrip merges as the App. A merge by the workflow's own token would leave a stack's next pull request behind.
-- Merged branches are deleted.
+- Merged branches are deleted, and a pull request behind its base shows GitHub's Update branch button.
 
 ## The agent's machine
 

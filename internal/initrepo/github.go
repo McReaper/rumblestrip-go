@@ -57,7 +57,12 @@ func (GH) SetSecret(ctx context.Context, s Secret) error {
 
 // Protect makes Rumblestrip the arbiter of repo ("owner/name"): the default
 // branch's ruleset and the tags', each created, or updated to Rumblestrip's;
-// merged branches deleted and squash merges allowed; releases immutable.
+// merged branches deleted, squash merges allowed, and a pull request behind
+// its base offered the Update branch button; releases immutable.
+//
+// WHY: a Dependabot pull request that fails on what main held reruns only
+// once its branch moves onto the fixed main, and the button is the owner's
+// one click for it.
 // It returns what it did, a line each.
 func Protect(ctx context.Context, api API, repo string) ([]string, error) {
 	existing, err := rulesets(ctx, api, repo)
@@ -72,11 +77,11 @@ func Protect(ctx context.Context, api API, repo string) ([]string, error) {
 		}
 		done = append(done, line)
 	}
-	settings := []byte(`{"delete_branch_on_merge": true, "allow_squash_merge": true}`)
+	settings := []byte(`{"delete_branch_on_merge": true, "allow_squash_merge": true, "allow_update_branch": true}`)
 	if _, err := api.Call(ctx, Request{Method: "PATCH", Path: "repos/" + repo, Body: settings}); err != nil {
 		return done, err
 	}
-	done = append(done, "merged branches deleted, squash merges allowed")
+	done = append(done, "merged branches deleted, squash merges allowed, branches behind their base can be updated")
 	if _, err := api.Call(ctx, Request{Method: "PUT", Path: "repos/" + repo + "/immutable-releases"}); err != nil {
 		return done, err
 	}
