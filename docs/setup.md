@@ -15,7 +15,7 @@ What each step of the README's setup sets, and why the agent can't undo it. You 
 
 A GitHub App the agent acts as, created from Rumblestrip's manifest in your browser. Its private key goes to your configuration directory, never into a repository. Install it on the repositories it works on.
 
-It may write code and pull requests. It may not touch the workflows or the repository's settings, so it can't change the rules that judge it, even through a pull request. Any App with contents and pull requests write will do, one you already have included.
+It may write code and pull requests. It may not touch the workflows or the repository's settings, so it can't change the rules that judge it, even through a pull request. In Claude Code, the agent's `gh` acts as it, so you can approve what it opens. An App of yours will do: set `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`.
 
 ## `rumblestrip init github`: the rules GitHub enforces
 

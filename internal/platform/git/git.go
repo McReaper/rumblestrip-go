@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -24,6 +25,22 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return string(out), nil
+}
+
+var githubRemote = regexp.MustCompile(`github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$`)
+
+// OriginRepo returns the "owner/name" of the GitHub repository the origin
+// remote of the repository at dir names.
+func OriginRepo(ctx context.Context, dir string) (string, error) {
+	url, err := Run(ctx, dir, "remote", "get-url", "origin")
+	if err != nil {
+		return "", err
+	}
+	m := githubRemote.FindStringSubmatch(strings.TrimSpace(url))
+	if m == nil {
+		return "", fmt.Errorf("origin is %s, not a GitHub repository", strings.TrimSpace(url))
+	}
+	return m[1], nil
 }
 
 // CheckRef refuses a ref that git would take for an option.
