@@ -22,6 +22,7 @@ One module per pull request: the skeleton first, its features after, each with t
 ```
 internal/<m>/<m>.go            the contract: Open, Close, Register(s, j), Commands(j, out)
 internal/<m>/GLOSSARY.md       each domain type: what it means, what makes one
+internal/<m>/glossary_test.go  notes' test, copied: it fails on a domain type with no line
 internal/<m>/<m>_test.go       the golden test of its tools (testdata/tools.golden.json)
 internal/<m>/internal/domain/  pure: types, their Parse functions, the rules
 internal/<m>/internal/infra/   its storage, behind the interfaces its slices declare
@@ -32,7 +33,6 @@ Follow `internal/notes/`:
 - The contract is the only package outside the module may import. It wires the slices and the infra, and holds no rule.
 - The domain imports the standard library's pure packages and `pkg/` only: no I/O, no clock, no environment, no log.
 - Every domain type that holds an identifier or a constrained value has a `Parse` function; outside the domain, nothing converts to it.
-- `GLOSSARY.md` defines every exported domain type; a test fails when one is missing.
 - Wire the module in `cmd/<app>/main.go`: open it under the data directory, pass it the journal.
 
 ## What the module never does

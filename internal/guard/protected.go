@@ -21,8 +21,8 @@ var (
 //
 // WHY: a module's glossary is the agent's: it says what the code's types
 // are, a test checks it names each one, and the Docs check has it reread.
-// Held for the owner, a fix to it made a change that needed nothing else
-// of them wait (the sandbox's first run).
+// Held for the owner, a fix to it would make a change that needs nothing
+// else of them wait for them.
 func Harness() []string {
 	return []string{".github/", ".claude/", ".rumblestrip/", "AGENTS.md", "CLAUDE.md", "docs/adr/"}
 }
