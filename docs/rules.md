@@ -223,8 +223,9 @@ Proof: `m7-diagnosability`, `m7-duplicate-messages`. Left to review: whether an 
 - zizmor and actionlint check workflows: pinned actions, least permissions, no injection.
 - cyclonedx-gomod writes an SBOM of what the binary links.
 - Dependabot proposes each update a week after its release. `rumblestrip init` writes its file.
+- A bot's update runs only the tests, the spec and known vulnerabilities, with no comment. What it changes of the owner's still waits for them.
 
-Proof: `m8-vulnerable-dep`, `m8-untidy`, `t2-gomod`, `guard-gomod`, `ci-workflow`, `TestSBOMListsTheModulesTheBinaryLinks`, `TestRumblestripRunsTheVersionsToolsTxtPins`. Left to review: every new module.
+Proof: `m8-vulnerable-dep`, `m8-untidy`, `t2-gomod`, `guard-gomod`, `ci-workflow`, `TestSBOMListsTheModulesTheBinaryLinks`, `TestRumblestripRunsTheVersionsToolsTxtPins`, `TestABotsDependencyUpdateRunsOnlyWhatShowsItWorks`, `TestABotsDependencyUpdateGetsNoCommentButStillWaitsForTheOwner`. Left to review: every new module.
 
 ## M9: traced intent (partial)
 

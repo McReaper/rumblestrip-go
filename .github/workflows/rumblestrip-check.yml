@@ -56,7 +56,19 @@ jobs:
       id-token: write # Rumblestrip's version, read from the job's token
     outputs:
       rumblestrip: ${{ steps.rumblestrip.outputs.version }}
+      update: ${{ steps.update.outputs.update }}
     steps:
+      - name: Is it a bot's dependency update?
+        # Dependabot's or Renovate's: no agent wrote it, so the gates that
+        # judge an agent's work, and the review sheet, stay out of it.
+        id: update
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          case $AUTHOR in
+            'dependabot[bot]' | 'renovate[bot]') echo "update=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "update=false" >> "$GITHUB_OUTPUT" ;;
+          esac
       - name: Which rumblestrip commit is this workflow?
         id: rumblestrip
         env:
@@ -112,15 +124,38 @@ jobs:
           - { id: title, title: Title }
           - { id: mutate, title: Mutation }
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Does this gate run on this change?
+        # On a bot's dependency update, only what shows the update works
+        # runs: the tests, which build the code, the spec, and the known
+        # vulnerabilities. The other gates judge an agent's work.
+        id: runs
+        env:
+          UPDATE: ${{ needs.version.outputs.update }}
+          GATE: ${{ matrix.gate.id }}
+        run: |
+          runs=true
+          if [ "$UPDATE" = true ]; then
+            case $GATE in
+              go-test | spec | govulncheck) ;;
+              *) runs=false ;;
+            esac
+          fi
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+          if [ "$runs" = false ]; then
+            echo "::notice title=Not run on a dependency update::$GATE judges an agent's work, and a bot's update has none"
+          fi
+      - if: steps.runs.outputs.runs == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - if: steps.runs.outputs.runs == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
       - name: Install Rumblestrip and the tool of this gate
+        if: steps.runs.outputs.runs == 'true'
         env:
           GOTOOLCHAIN: auto # a tool may need a newer Go than the app; it builds a separate binary
           RUMBLESTRIP_VERSION: ${{ needs.version.outputs.rumblestrip }}
@@ -153,6 +188,7 @@ jobs:
               sudo mv "$RUNNER_TEMP/shellcheck-v$v/shellcheck" /usr/local/bin/ ;;
           esac
       - name: Run the gate
+        if: steps.runs.outputs.runs == 'true'
         env:
           GATE: ${{ matrix.gate.id }}
           BASE: ${{ github.event.pull_request.base.ref }}
@@ -166,7 +202,7 @@ jobs:
             *) rumblestrip check --only "$GATE" --base "origin/$BASE" --github --summary "$summary" ;;
           esac
       - name: Hand the gate's row and section of the summary to Check
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.runs.outputs.runs == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rumblestrip-summary-${{ matrix.gate.id }}
@@ -242,29 +278,38 @@ jobs:
           BASE: ${{ github.event.pull_request.base.ref }}
           OWNER: ${{ inputs.owner }}
           APPROVED: ${{ steps.approval.outputs.approved || 'false' }}
+          UPDATE: ${{ needs.version.outputs.update }}
         run: |
           set -eu
           review() { rumblestrip review --base "origin/$BASE" --approved="$APPROVED" --approved-trees "$RUNNER_TEMP/approved-trees" "$@"; }
-          sheet="$RUNNER_TEMP/sheet.md"
-          review > "$sheet"
           state=$(review --approval)
-          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.body | startswith("<!-- rumblestrip -->")) | .id' | head -n 1)
-          if [ -n "$id" ]; then
-            url=$(gh api "repos/$REPO/issues/comments/$id" --method PATCH -F "body=@$sheet" --jq .html_url)
+          # A bot's dependency update gets no comment and no label: what it
+          # changes of the owner's, a pin in .github/ say, still waits for them.
+          url="https://github.com/$REPO/pull/$PR"
+          read_what="Rumblestrip's comment says what to read"
+          if [ "$UPDATE" = true ]; then
+            read_what="the update changes what is theirs"
           else
-            url=$(gh api "repos/$REPO/issues/$PR/comments" --method POST -F "body=@$sheet" --jq .html_url)
+            sheet="$RUNNER_TEMP/sheet.md"
+            review > "$sheet"
+            id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- rumblestrip -->")) | .id' | head -n 1)
+            if [ -n "$id" ]; then
+              url=$(gh api "repos/$REPO/issues/comments/$id" --method PATCH -F "body=@$sheet" --jq .html_url)
+            else
+              url=$(gh api "repos/$REPO/issues/$PR/comments" --method POST -F "body=@$sheet" --jq .html_url)
+            fi
+            review --labels | while read -r label; do
+              name=${label#?}
+              case $label in
+                +*) gh label create "$name" --repo "$REPO" --force --color FBCA04 --description "Waiting for the owner's approval: Rumblestrip's comment says what to read" > /dev/null
+                    gh pr edit "$PR" --repo "$REPO" --add-label "$name" > /dev/null ;;
+                -*) gh pr edit "$PR" --repo "$REPO" --remove-label "$name" > /dev/null 2>&1 || true ;;
+              esac
+            done
           fi
-          review --labels | while read -r label; do
-            name=${label#?}
-            case $label in
-              +*) gh label create "$name" --repo "$REPO" --force --color FBCA04 --description "Waiting for the owner's approval: Rumblestrip's comment says what to read" > /dev/null
-                  gh pr edit "$PR" --repo "$REPO" --add-label "$name" > /dev/null ;;
-              -*) gh pr edit "$PR" --repo "$REPO" --remove-label "$name" > /dev/null 2>&1 || true ;;
-            esac
-          done
           case $state in
-            waiting) status=pending; description="Waiting for $OWNER's approval: Rumblestrip's comment says what to read" ;;
+            waiting) status=pending; description="Waiting for $OWNER's approval: $read_what" ;;
             approved) status=success; description="Approved by $OWNER" ;;
             *) status=success; description="Nothing to approve" ;;
           esac
