@@ -31,7 +31,7 @@ func appCommand(out io.Writer) *cobra.Command {
 	app := &cobra.Command{Use: "app", Short: "Act as the agent's GitHub App"}
 	app.PersistentFlags().StringVar(&o.clientID, "client-id", o.clientID, "the app's Client ID (RUMBLESTRIP_APP_CLIENT_ID)")
 	app.PersistentFlags().StringVar(&o.key, "key", o.key, "the app's private key file (RUMBLESTRIP_APP_KEY)")
-	app.AddCommand(installationsCommand(o, out), execCommand(o))
+	app.AddCommand(installationsCommand(o, out), execCommand(o), tokenCommand(o, out))
 	return app
 }
 
@@ -46,8 +46,8 @@ func (o *appOptions) jwt(ctx context.Context) (string, error) {
 	return ghapp.JWT(o.clientID, key, time.Now())
 }
 
-// WHY: the plugin's gh runs each call through app exec with nothing
-// given. The repository names its App, in a file the owner commits, and
+// WHY: the agent's gh asks for the App's token before each command, with
+// nothing given. The repository names its App, in a file the owner commits, and
 // the machine keeps that App's key: a clone acts as the App its
 // repository names, on any machine, and no key goes into git.
 func (o *appOptions) resolve(ctx context.Context) error {
@@ -122,20 +122,15 @@ func execCommand(o *appOptions) *cobra.Command {
 }
 
 func runAsApp(ctx context.Context, o *appOptions, argv []string) error {
+	tok, err := mint(ctx, o)
+	if err != nil {
+		return err
+	}
 	jwt, err := o.jwt(ctx)
 	if err != nil {
 		return err
 	}
 	c := ghapp.NewClient()
-	if o.installation == 0 {
-		if o.installation, err = repoInstallation(ctx, c, jwt); err != nil {
-			return err
-		}
-	}
-	tok, err := c.Token(ctx, jwt, o.installation)
-	if err != nil {
-		return err
-	}
 	slug, err := c.Slug(ctx, jwt)
 	if err != nil {
 		return err
@@ -148,7 +143,7 @@ func runAsApp(ctx context.Context, o *appOptions, argv []string) error {
 }
 
 // WHY: given no installation, the one that holds the repository the
-// command runs in is the one: the plugin's gh runs in the agent's clone.
+// command runs in is the one: the agent's gh runs in its clone.
 func repoInstallation(ctx context.Context, c ghapp.Client, jwt string) (int64, error) {
 	repo, err := git.OriginRepo(ctx, ".")
 	if err != nil {
@@ -159,4 +154,61 @@ func repoInstallation(ctx context.Context, c ghapp.Client, jwt string) (int64, e
 		return 0, fmt.Errorf("the App isn't installed on %s, or can't be reached: install it there: %w", repo, err)
 	}
 	return inst.ID, nil
+}
+
+func tokenCommand(o *appOptions, out io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "token",
+		Short: "Print the App's token for the repository here: the plugin gives it to the agent's gh",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			tok, err := repoToken(cmd.Context(), o)
+			if err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(out, tok.Value); err != nil {
+				return fmt.Errorf("print the token: %w", err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Int64Var(&o.installation, "installation", o.installation, "the installation's id (RUMBLESTRIP_APP_INSTALLATION)")
+	return cmd
+}
+
+func repoToken(ctx context.Context, o *appOptions) (ghapp.Token, error) {
+	if err := o.resolve(ctx); err != nil {
+		return ghapp.Token{}, err
+	}
+	repo, err := git.OriginRepo(ctx, ".")
+	if err != nil {
+		return ghapp.Token{}, fmt.Errorf("which repository: %w", err)
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return ghapp.Token{}, fmt.Errorf("where to keep the token: %w", err)
+	}
+	g := ghapp.Grant{ClientID: o.clientID, Repo: repo}
+	if tok, ok := ghapp.CachedToken(cache, g, time.Now()); ok {
+		return tok, nil
+	}
+	tok, err := mint(ctx, o)
+	if err != nil {
+		return ghapp.Token{}, err
+	}
+	return tok, ghapp.SaveToken(cache, g, tok)
+}
+
+func mint(ctx context.Context, o *appOptions) (ghapp.Token, error) {
+	jwt, err := o.jwt(ctx)
+	if err != nil {
+		return ghapp.Token{}, err
+	}
+	c := ghapp.NewClient()
+	if o.installation == 0 {
+		if o.installation, err = repoInstallation(ctx, c, jwt); err != nil {
+			return ghapp.Token{}, err
+		}
+	}
+	return c.Token(ctx, jwt, o.installation)
 }

@@ -10,7 +10,8 @@
 # installs for the pin in ~/.cache/rumblestrip. Setup also installs gh stack,
 # GitHub's extension of gh, which the agent stacks pull requests with. Until setup has pulled the
 # pin's image, the hooks refuse every command and edit but rumblestrip setup:
-# the agent never works unchecked.
+# the agent never works unchecked. At a session's start, it gives the agent's
+# gh the App's token, through app token on the host.
 set -eu
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "rumblestrip: not in a git repository" >&2
@@ -199,13 +200,46 @@ install_gh_stack() {
     echo "rumblestrip: the agent opens pull requests with gh, the GitHub CLI, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
     exit 1
   fi
-  if ! gh extension list 2>/dev/null | grep -q 'github/gh-stack'; then
-    gh extension install github/gh-stack --pin "$gh_stack" >&2
+  if ! as_user extension list 2>/dev/null | grep -q 'github/gh-stack'; then
+    as_user extension install github/gh-stack --pin "$gh_stack" >&2
+  fi
+}
+
+# Installing gh's extensions touches no repository: as the user, whatever
+# token the agent's commands hold.
+as_user() {
+  (
+    unset GH_TOKEN
+    gh "$@"
+  )
+}
+
+# The agent's gh acts as the App the repository names, whichever gh it
+# runs: Claude Code reads CLAUDE_ENV_FILE before each of the agent's
+# commands, and gh takes GH_TOKEN over the account logged in. With no token
+# to be had, GH_TOKEN holds one that works nowhere, so gh fails rather than
+# act as the owner, and the session's start says why.
+app_env() {
+  if [ -z "${CLAUDE_ENV_FILE-}" ]; then
+    return 0
+  fi
+  if ! grep -q ' app token ' "$CLAUDE_ENV_FILE" 2>/dev/null; then
+    cat >>"$CLAUDE_ENV_FILE" <<EOF
+export GH_TOKEN="\$("$bin/rumblestrip" app token 2>/dev/null || echo rumblestrip-no-app-token)"
+EOF
+  fi
+  if [ -d "$bin" ] && ! why=$("$bin/rumblestrip" app token 2>&1 >/dev/null); then
+    echo "Rumblestrip: gh acts here as the App this repository names, and can't now: ${why#rumblestrip: }. Until then, gh fails: tell the user."
   fi
 }
 
 case $cmd in
-  check | docs | guard | hook | mutate | review | spec | sweep) in_image "$@" ;;
+  check | docs | guard | hook | mutate | review | spec | sweep)
+    if [ "$cmd $sub" = "hook session-start" ]; then
+      app_env
+    fi
+    in_image "$@"
+    ;;
   setup)
     setup
     exit 0
