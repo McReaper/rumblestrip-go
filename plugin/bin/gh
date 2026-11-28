@@ -1,10 +1,11 @@
 #!/bin/sh
 # gh, as the repository's App. Claude Code puts the plugin's bin first on
-# the PATH of the agent's commands, so the agent's gh acts as the App
-# rumblestrip init app made, never as the owner's account: that one can
-# merge past every rule, and the owner can't approve a pull request it
-# opened. Each call gets a fresh token through rumblestrip app exec, since
-# a token lasts an hour. With no App set up, app exec refuses and says how.
+# the PATH of the agent's commands, so the agent's gh acts as the App the
+# repository names in .rumblestrip/app.json, never as the owner's account:
+# that one can merge past every rule, and the owner can't approve a pull
+# request it opened. Each call gets a fresh token through rumblestrip app
+# exec, since a token lasts an hour. With no App named, or its key not on
+# this machine, app exec refuses and says how.
 set -eu
 self=$(cd "$(dirname "$0")" && pwd -P)
 real=

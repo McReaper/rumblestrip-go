@@ -74,6 +74,27 @@ func TestTheFilesNeedTheOwnerAndRumblestripsFullCommit(t *testing.T) {
 	}
 }
 
+// WHY: the repository names the App its agent acts as, so each clone acts
+// as it; with no App known yet, init names none rather than a wrong one.
+func TestTheFilesNameTheAppTheAgentActsAsWhenThereIsOne(t *testing.T) {
+	if _, ok := files(t)[".rumblestrip/app.json"]; ok {
+		t.Errorf("no App given, and Files names one")
+	}
+	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.2.0", Commit: commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com", ClientID: "Iv23abc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if f.Path == ".rumblestrip/app.json" {
+			if want := "{\n  \"client_id\": \"Iv23abc\"\n}\n"; string(f.Content) != want {
+				t.Errorf(".rumblestrip/app.json is\n%s\nwant\n%s", f.Content, want)
+			}
+			return
+		}
+	}
+	t.Errorf("Files names no App: %v", fs)
+}
+
 func TestWriteKeepsAFileTheRepositoryHasAndWritesTheOthersOnce(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".github"), 0o750); err != nil {
