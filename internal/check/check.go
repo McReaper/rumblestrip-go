@@ -16,6 +16,7 @@ import (
 	"github.com/McReaper/rumblestrip-go/internal/archtest"
 	"github.com/McReaper/rumblestrip-go/internal/pr"
 	"github.com/McReaper/rumblestrip-go/internal/sweep"
+	"golang.org/x/tools/go/packages"
 )
 
 // Options says what to check and how strictly.
@@ -107,6 +108,19 @@ func gateIDs(gs []gate) []string {
 // pattern is a package path relative to o.Dir, like ./internal/notes.
 func Package(ctx context.Context, o Options, pattern string) []Result {
 	return runGates(ctx, o, perSystem(o, pattern))
+}
+
+// Compiles reports whether the packages pattern names in the module at dir
+// compile for the host's system, their tests included.
+func Compiles(ctx context.Context, dir, pattern string) bool {
+	cfg := &packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedTypes, Dir: dir, Tests: true}
+	pkgs, err := packages.Load(cfg, pattern)
+	if err != nil {
+		return false
+	}
+	broken := 0
+	packages.Visit(pkgs, nil, func(p *packages.Package) { broken += len(p.Errors) })
+	return broken == 0
 }
 
 func runGates(ctx context.Context, o Options, gs []gate) []Result {

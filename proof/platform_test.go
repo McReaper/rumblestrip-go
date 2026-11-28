@@ -718,6 +718,13 @@ func TestThePostEditHookTellsTheAgentWhatItsEditBroke(t *testing.T) {
 	if out, code := hookRun(t, editOf(t, clean), "post-edit"); code != 0 || out != "" {
 		t.Errorf("a clean package: exit %d, said %q", code, out)
 	}
+	ahead := filepath.Join(dir, "internal/notes/internal/m1case/ahead_test.go")
+	if err := os.WriteFile(ahead, []byte("package m1case\n\nimport \"testing\"\n\nfunc TestNotWrittenYet(t *testing.T) { NotWrittenYet() }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := hookRun(t, editOf(t, ahead), "post-edit"); code != 0 || out != "" {
+		t.Errorf("a test written ahead of its code: exit %d, said %q; want nothing until the package compiles", code, out)
+	}
 }
 
 // WHY: in Rumblestrip's image, the launcher mounts the repository at

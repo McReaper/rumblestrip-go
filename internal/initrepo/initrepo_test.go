@@ -110,6 +110,9 @@ func (f *fakeAPI) Call(_ context.Context, r initrepo.Request) ([]byte, error) {
 	if r.Method == "PATCH" && !strings.Contains(string(r.Body), `"delete_branch_on_merge": true`) {
 		return nil, errors.New("the deletion of merged branches not asked")
 	}
+	if r.Method == "PATCH" && !strings.Contains(string(r.Body), `"allow_update_branch": true`) {
+		return nil, errors.New("the Update branch button not asked")
+	}
 	return []byte(f.reply[r.Method+" "+r.Path]), nil
 }
 

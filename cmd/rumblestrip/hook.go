@@ -164,8 +164,16 @@ func postEditHook(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("post-edit: %w", err)
 	}
+	pattern := "./" + filepath.ToSlash(rel)
+	// WHY: an edit in a series can leave the package mid-change, a test
+	// ahead of the code it tests or an import ahead of its use. A failure
+	// there is the next edit's to fix, so the hook stays quiet, and the
+	// stop hook judges the package once the agent is done.
+	if !check.Compiles(cmd.Context(), root, pattern) {
+		return nil
+	}
 	o := check.Options{Dir: root, GOOS: []string{"linux", "windows"}}
-	return feedback(cmd.ErrOrStderr(), check.Package(cmd.Context(), o, "./"+filepath.ToSlash(rel)))
+	return feedback(cmd.ErrOrStderr(), check.Package(cmd.Context(), o, pattern))
 }
 
 func stopHook(cmd *cobra.Command, base string) error {
@@ -198,11 +206,18 @@ func feedback(stderr io.Writer, results []check.Result) error {
 	if failing == 0 {
 		return nil
 	}
-	fmt.Fprintf(&b, "rumblestrip: %d gates fail; fix them before you finish. Each line says the rule and how to fix it.\n", failing)
+	fmt.Fprintf(&b, "rumblestrip: %s before you finish. Each line says the rule and how to fix it.\n", gatesFail(failing))
 	if _, err := io.WriteString(stderr, b.String()); err != nil {
 		return fmt.Errorf("write the hook's feedback: %w", err)
 	}
 	return exitCode(2)
+}
+
+func gatesFail(n int) string {
+	if n == 1 {
+		return "1 gate fails; fix it"
+	}
+	return fmt.Sprintf("%d gates fail; fix them", n)
 }
 
 func moduleRoot(dir string) (string, error) {
