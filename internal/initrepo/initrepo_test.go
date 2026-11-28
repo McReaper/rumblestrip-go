@@ -42,7 +42,7 @@ func TestTheFilesPinRumblestripNameTheOwnerAndTurnThePluginOn(t *testing.T) {
 			t.Errorf("%s lacks %q:\n%s", path, want, got[path])
 		}
 	}
-	for _, line := range []string{"/.github/ @octo\n", "/AGENTS.md @octo\n", "**/GLOSSARY.md @octo\n"} {
+	for _, line := range []string{"/.github/ @octo\n", "/AGENTS.md @octo\n"} {
 		if !strings.Contains(got[".github/CODEOWNERS"], line) {
 			t.Errorf("CODEOWNERS lacks %q:\n%s", line, got[".github/CODEOWNERS"])
 		}

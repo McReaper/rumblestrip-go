@@ -14,11 +14,6 @@ Feature: Notes
     When an agent adds the note "Groceries"
     Then the agent's list shows the note "Groceries"
 
-  Scenario: A deleted note leaves the list
-    Given the note "Groceries"
-    When I delete the note "Groceries"
-    Then the list shows 0 notes
-
   @wip
   Scenario: The notes export as Markdown
     Given the note "Groceries"

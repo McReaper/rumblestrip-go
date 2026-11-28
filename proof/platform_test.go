@@ -619,11 +619,7 @@ func TestTheAppCodeOwnersHoldTheHarnessAndLeaveTheSpecToTheCheck(t *testing.T) {
 	}
 	var want []string
 	for _, h := range guard.Harness() {
-		if h == "GLOSSARY.md" {
-			want = append(want, "**/"+h)
-		} else {
-			want = append(want, "/"+h)
-		}
+		want = append(want, "/"+h)
 	}
 	if !slices.Equal(owned, want) {
 		t.Errorf("CODEOWNERS owns %q, the guard's harness is %q", owned, want)

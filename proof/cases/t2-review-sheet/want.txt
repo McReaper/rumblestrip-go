@@ -3,7 +3,7 @@
 # listed, the machines': two tests changed and a subtest removed, a golden rewritten, a new module, a
 # library function added, a dependency made direct.
 !isolated
-review/spec-added features/notes.feature:27 ^The notes export as Markdown$
+review/spec-added features/notes.feature:21 ^The notes export as Markdown$
 review/approval AGENTS.md:0 ^the agent's instructions changed$
 review/approval go.mod:17 ^a new dependency, example\.com/newdep$
 review/approval pkg/slug:0 ^an incompatible change to the library's API, Make: changed from func\(string\) string to func\(string, string\) string$
