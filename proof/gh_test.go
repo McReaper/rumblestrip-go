@@ -43,4 +43,9 @@ func TestThePluginsGhRunsTheRealOneAsTheApp(t *testing.T) {
 	if !strings.HasPrefix(got, "rumblestrip app exec -- ") || !strings.HasSuffix(got, "/gh pr view 7") || strings.Contains(got, filepath.Base(plugin)+"/gh") {
 		t.Errorf("the plugin's gh ran %q, want rumblestrip app exec -- <the real gh> pr view 7", got)
 	}
+	cmd = exec.CommandContext(t.Context(), "sh", filepath.Join(plugin, "gh"), "extension", "list")
+	cmd.Env = append(os.Environ(), "PATH="+plugin+string(os.PathListSeparator)+other+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "real" {
+		t.Errorf("gh extension list, which touches no repository: %q, %v, want the real gh run as the user", out, err)
+	}
 }

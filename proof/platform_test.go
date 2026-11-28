@@ -334,7 +334,7 @@ func TestTheSettingsNameRumblestripInTheAgentsCommitsAndPullRequests(t *testing.
 // called; docker keeps each container's state and whether the image was
 // pulled in files, and go install writes a rumblestrip that says how it was
 // called and ends with FAKE_HOST_EXIT.
-type launcher struct{ dir, fakes, tmp, log, golog, commit, input string }
+type launcher struct{ dir, fakes, tmp, log, golog, ghlog, commit, input string }
 
 const fakeGo = `#!/bin/sh
 echo "go $*" >> "$FAKE_GO_LOG"
@@ -367,6 +367,14 @@ case $1 in
 esac
 `
 
+const fakeGh = `#!/bin/sh
+echo "gh $*" >> "$FAKE_GH_LOG"
+case "$1 $2" in
+  "extension list") if [ -e "$FAKE_GH_LOG.stack" ]; then echo "gh stack	github/gh-stack	v0.3.0"; fi ;;
+  "extension install") touch "$FAKE_GH_LOG.stack" ;;
+esac
+`
+
 const fakeUname = `#!/bin/sh
 case $1 in
   -m) echo "${FAKE_ARCH:-x86_64}" ;;
@@ -379,6 +387,7 @@ func newLauncher(t *testing.T) launcher {
 	l := launcher{dir: t.TempDir(), fakes: t.TempDir(), tmp: t.TempDir(), commit: strings.Repeat("ab", 20)}
 	l.log = filepath.Join(l.tmp, "docker.log")
 	l.golog = filepath.Join(l.tmp, "go.log")
+	l.ghlog = filepath.Join(l.tmp, "gh.log")
 	fs, err := initrepo.Files(initrepo.Options{Version: initrepo.Version{Tag: "v0.3.0", Commit: l.commit}, Owner: "octo", OwnerEmail: "1+octo@users.noreply.github.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -389,7 +398,7 @@ func newLauncher(t *testing.T) launcher {
 	gitIn(t, l.dir, "init", "-q")
 	gitIn(t, l.dir, "add", "-A")
 	gitIn(t, l.dir, "commit", "-q", "-m", "init")
-	fakes := map[string]string{"go": fakeGo, "docker": fakeDocker, "uname": fakeUname}
+	fakes := map[string]string{"go": fakeGo, "docker": fakeDocker, "uname": fakeUname, "gh": fakeGh}
 	for name, script := range fakes {
 		if err := os.WriteFile(filepath.Join(l.fakes, name), []byte(script), 0o600); err != nil {
 			t.Fatal(err)
@@ -414,7 +423,7 @@ func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
 	cmd := exec.CommandContext(t.Context(), "sh", append([]string{"-c", script, "sh", filepath.ToSlash(l.fakes), filepath.ToSlash(path)}, args...)...)
 	cmd.Dir = l.dir
 	cmd.Stdin = strings.NewReader(l.input)
-	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "FAKE_GO_LOG="+filepath.ToSlash(l.golog), "XDG_CACHE_HOME="+filepath.ToSlash(filepath.Join(l.tmp, "cache")))
+	cmd.Env = append(os.Environ(), "FAKE_DOCKER_LOG="+filepath.ToSlash(l.log), "FAKE_GO_LOG="+filepath.ToSlash(l.golog), "FAKE_GH_LOG="+filepath.ToSlash(l.ghlog), "XDG_CACHE_HOME="+filepath.ToSlash(filepath.Join(l.tmp, "cache")))
 	cmd.Env = append(cmd.Env, strings.Fields(env)...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -441,6 +450,16 @@ func (l launcher) calls(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(l.log, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// WHY: what gh was called with: setup installs gh stack through it.
+func (l launcher) ghCalls(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(l.ghlog)
+	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	return string(data)
@@ -479,8 +498,11 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	if n := l.installs(t); n != 1 {
 		t.Errorf("go installed rumblestrip %d times for one pin, want once", n)
 	}
-	if out, code := l.run(t, "FAKE_HOST_EXIT=3", "pr", "stack"); code != 3 || out != "host rumblestrip pr stack\n" {
-		t.Errorf("pr, which needs the host's credentials, ran %q and ended %d", out, code)
+	if out, code := l.run(t, "FAKE_HOST_EXIT=3", "app", "installations"); code != 3 || out != "host rumblestrip app installations\n" {
+		t.Errorf("app, which needs the host's credentials, ran %q and ended %d", out, code)
+	}
+	if n := strings.Count(l.ghCalls(t), "gh extension install github/gh-stack --pin v0.3.0\n"); n != 1 {
+		t.Errorf("setup installed gh stack %d times, want once, at the pinned version", n)
 	}
 	launcherRunsChecksInTheImage(t, l, image)
 }
@@ -520,7 +542,7 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 		{"the agent's first try to stop", l, "", `{"stop_hook_active":false}`, []string{"hook", "stop"}, 2, pull},
 		{"its second try", l, "", `{"stop_hook_active": true}`, []string{"hook", "stop"}, 0, ""},
 		{"a session's start", l, "", "{}", []string{"hook", "session-start"}, 0, "Until then, Rumblestrip refuses every command and edit but rumblestrip setup."},
-		{"pr", l, "", "", []string{"pr", "stack"}, 1, "isn't installed on this machine: run rumblestrip setup"},
+		{"app", l, "", "", []string{"app", "installations"}, 1, "isn't installed on this machine: run rumblestrip setup"},
 		{"a command, Docker not running,", l, "FAKE_DOCKER=down", push, []string{"hook", "pre-tool"}, 2, "Docker isn't running"},
 		{"setup, Docker not running,", l, "FAKE_DOCKER=down", "", []string{"setup"}, 1, "Docker isn't running"},
 		{"a command on an arm64 machine", l, "FAKE_ARCH=arm64", push, []string{"hook", "pre-tool"}, 2, "built for x86-64 only, and this machine is arm64"},

@@ -22,6 +22,7 @@
       "Bash(git commit --no-verify *)",
       "Bash(git commit -n *)",
       "Bash(gh pr merge *)",
+      "Bash(gh stack merge *)",
       "Bash(gh api * rulesets *)",
       "Edit(./.rumblestrip/**)",
       "Edit(./.github/**)",

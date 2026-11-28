@@ -26,4 +26,9 @@ if [ -z "$real" ]; then
   echo "rumblestrip: gh, the GitHub CLI, isn't installed: ask the user to install it" >&2
   exit 1
 fi
+# Listing and installing gh's extensions touches no repository: rumblestrip
+# setup installs gh stack that way, as the user.
+case "${1-} ${2-}" in
+  "extension list" | "extension install") exec "$real" "$@" ;;
+esac
 exec "$self/rumblestrip" app exec -- "$real" "$@"

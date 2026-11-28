@@ -5,9 +5,10 @@
 #
 # The checks run in Rumblestrip's image of that commit, which holds every
 # tool at the version CI runs. One container a repository stays up for the
-# day, so a hook doesn't pay a container's start. pr, app and init need the
+# day, so a hook doesn't pay a container's start. app and init need the
 # host's credentials: they run on the host, from the binary rumblestrip setup
-# installs for the pin in ~/.cache/rumblestrip. Until setup has pulled the
+# installs for the pin in ~/.cache/rumblestrip. Setup also installs gh stack,
+# GitHub's extension of gh, which the agent stacks pull requests with. Until setup has pulled the
 # pin's image, the hooks refuse every command and edit but rumblestrip setup:
 # the agent never works unchecked.
 set -eu
@@ -158,7 +159,7 @@ install_pin() {
     return 0
   fi
   if ! command -v go >/dev/null 2>&1; then
-    echo "rumblestrip: pr, app and init run on the host, through Go, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
+    echo "rumblestrip: app and init run on the host, through Go, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
     exit 1
   fi
   mkdir -p "$cache"
@@ -185,7 +186,22 @@ setup() {
   fi
   docker pull "$image"
   install_pin
+  install_gh_stack
   echo "Rumblestrip $short is set up: its checks run in $image."
+}
+
+# The version of gh stack Rumblestrip was tried with. One already there,
+# whatever its version, is the user's own and stays.
+gh_stack=v0.3.0
+
+install_gh_stack() {
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "rumblestrip: the agent opens pull requests with gh, the GitHub CLI, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
+    exit 1
+  fi
+  if ! gh extension list 2>/dev/null | grep -q 'github/gh-stack'; then
+    gh extension install github/gh-stack --pin "$gh_stack" >&2
+  fi
 }
 
 case $cmd in

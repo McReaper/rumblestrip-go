@@ -347,6 +347,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           BASE_PR: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
             stack=$(gh api "repos/$REPO/pulls/$PR" -H "X-GitHub-Api-Version: 2026-03-10" --jq '.stack.number // empty')
@@ -356,7 +357,7 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error title=Not in a stack::pull request #$PR is on $BASE_PR but in no stack: run rumblestrip pr stack on its branch, which stacks it on the pull request of $BASE_PR"
+          echo "::error title=Not in a stack::pull request #$PR is on $BASE_PR but in no stack: run gh stack link $BASE_PR $HEAD_REF, naming first every pull request of the stack $BASE_PR is in, if any, bottom to top"
           {
             echo "### ❌ Not in a stack"
             echo

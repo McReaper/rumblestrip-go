@@ -113,8 +113,8 @@ sleep() { :; }
 	if code != 0 {
 		t.Errorf("in a stack: exit %d\n%s", code, out)
 	}
-	out, code, _ = runStep(t, fake+script, "PR=9", "BASE_PR=spec/x", "STACK=")
-	if code != 1 || !strings.Contains(out, "run rumblestrip pr stack on its branch, which stacks it on the pull request of spec/x") {
+	out, code, _ = runStep(t, fake+script, "PR=9", "BASE_PR=spec/x", "HEAD_REF=feat/x", "STACK=")
+	if code != 1 || !strings.Contains(out, "run gh stack link spec/x feat/x, naming first every pull request of the stack spec/x is in") {
 		t.Errorf("in no stack: exit %d\n%s", code, out)
 	}
 }
