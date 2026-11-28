@@ -333,12 +333,26 @@ func TestTheSettingsNameRumblestripInTheAgentsCommitsAndPullRequests(t *testing.
 // up, with a go, a docker and a uname on the PATH that say how they were
 // called; docker keeps each container's state and whether the image was
 // pulled in files, and go install writes a rumblestrip that says how it was
-// called and ends with FAKE_HOST_EXIT.
+// called and ends with FAKE_HOST_EXIT, but app env, which prints the App's
+// environment, or fails without its key.
 type launcher struct{ dir, fakes, tmp, log, golog, ghlog, commit, input string }
 
 const fakeGo = `#!/bin/sh
 echo "go $*" >> "$FAKE_GO_LOG"
-printf '#!/bin/sh\necho "host rumblestrip $*"\nexit ${FAKE_HOST_EXIT:-0}\n' > "$GOBIN/rumblestrip"
+cat > "$GOBIN/rumblestrip" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+  "app env")
+    if [ "${FAKE_HOST_EXIT:-0}" != 0 ]; then
+      echo "rumblestrip: the key of the App isn't on this machine" >&2
+      exit "$FAKE_HOST_EXIT"
+    fi
+    echo "export GH_TOKEN=ghs_app GIT_AUTHOR_NAME='app[bot]'" ;;
+  *)
+    echo "host rumblestrip $*"
+    exit "${FAKE_HOST_EXIT:-0}" ;;
+esac
+EOF
 chmod +x "$GOBIN/rumblestrip"
 `
 
@@ -371,6 +385,7 @@ const fakeGh = `#!/bin/sh
 echo "gh $*" >> "$FAKE_GH_LOG"
 [ -z "${GH_TOKEN-}" ] || echo "gh with GH_TOKEN $*" >> "$FAKE_GH_LOG"
 case "$1 $2" in
+  "--version ") echo "gh version ${FAKE_GH_VERSION:-2.106.0} (2026-11-25)" ;;
   "extension list") if [ -e "$FAKE_GH_LOG.stack" ]; then echo "gh stack	github/gh-stack	v0.3.0"; fi ;;
   "extension install") touch "$FAKE_GH_LOG.stack" ;;
 esac
@@ -413,7 +428,7 @@ func newLauncher(t *testing.T) launcher {
 // WHY: env sets the fakes: FAKE_DOCKER=down has Docker not running,
 // FAKE_RUN=fail its container fail to start, FAKE_EXEC says how docker exec
 // ends, FAKE_HOST_EXIT how the host's rumblestrip ends, FAKE_OS and
-// FAKE_ARCH what uname says.
+// FAKE_ARCH what uname says, FAKE_GH_VERSION which gh is installed.
 func (l launcher) run(t *testing.T, env string, args ...string) (string, int) {
 	t.Helper()
 	path, err := filepath.Abs("../plugin/bin/rumblestrip")
@@ -489,7 +504,7 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
 	launcherRefusesUntilSetup(t, l)
 	for _, env := range []string{"GH_TOKEN=rumblestrip-no-app-token", ""} {
-		if out, code := l.run(t, env, "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
+		if out, code := l.run(t, env, "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+", and gh stack is installed.\n") {
 			t.Errorf("setup ended %d: %q", code, out)
 		}
 	}
@@ -506,31 +521,32 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 		t.Errorf("setup installed gh stack %d times, want once, at the pinned version", n)
 	}
 	if calls := l.ghCalls(t); strings.Contains(calls, "gh with GH_TOKEN") {
-		t.Errorf("setup installed gh stack with the agent's GH_TOKEN, not as the user:\n%s", calls)
+		t.Errorf("setup called gh with the agent's GH_TOKEN, not as the user:\n%s", calls)
 	}
-	launcherGivesTheAgentsGhTheAppsToken(t, l)
+	launcherHasTheAgentActAsTheApp(t, l)
 	launcherRunsChecksInTheImage(t, l, image)
 }
 
-// WHY: the agent's gh acts as the App whichever gh it runs: at a session's
-// start, the launcher has Claude Code give each of the agent's commands
-// GH_TOKEN from app token on the host, once however often the session
-// resumes. With no token to be had, gh gets one that works nowhere, never
-// the owner's account, and the session's start says why.
-func launcherGivesTheAgentsGhTheAppsToken(t *testing.T, l launcher) {
+// WHY: the agent's gh and git act as the App whichever gh it runs: at a
+// session's start, the launcher has Claude Code read app env on the host
+// before each of the agent's commands, once however often the session
+// resumes, and says nothing. While the App can't act, the agent's gh gets a
+// token that works nowhere, never the owner's account, and the hooks refuse
+// every command and edit but setup, saying why, as setup does.
+func launcherHasTheAgentActAsTheApp(t *testing.T, l launcher) {
 	t.Helper()
 	envFile := filepath.ToSlash(filepath.Join(t.TempDir(), "env.sh"))
 	for range 2 {
-		if out, _ := l.given("{}").run(t, "CLAUDE_ENV_FILE="+envFile, "hook", "session-start"); strings.Contains(out, "can't now") {
-			t.Errorf("a session's start with a token to be had says: %q", out)
+		if out, code := l.given("{}").run(t, "CLAUDE_ENV_FILE="+envFile, "hook", "session-start"); code != 0 || strings.Contains(out, "acts on GitHub") {
+			t.Errorf("a session's start with the App at hand ended %d: %q", code, out)
 		}
 	}
 	data, err := os.ReadFile(envFile)
-	if err != nil || strings.Count(string(data), "export GH_TOKEN=") != 1 {
-		t.Fatalf("after a session's start and its resume, the env file reads %q: %v, want GH_TOKEN once", data, err)
+	if err != nil || strings.Count(string(data), " app env ") != 1 {
+		t.Fatalf("after a session's start and its resume, the env file reads %q: %v, want app env once", data, err)
 	}
-	token := func(env string) string {
-		cmd := exec.CommandContext(t.Context(), "sh", "-c", `. "$1"; printf %s "$GH_TOKEN"`, "sh", envFile)
+	agent := func(env string) string {
+		cmd := exec.CommandContext(t.Context(), "sh", "-c", `. "$1"; printf '%s %s' "$GH_TOKEN" "${GIT_AUTHOR_NAME-}"`, "sh", envFile)
 		cmd.Env = append(os.Environ(), env)
 		out, err := cmd.Output()
 		if err != nil {
@@ -538,14 +554,37 @@ func launcherGivesTheAgentsGhTheAppsToken(t *testing.T, l launcher) {
 		}
 		return string(out)
 	}
-	if got := token("FAKE_HOST_EXIT=0"); got != "host rumblestrip app token" {
-		t.Errorf("an agent's command has GH_TOKEN %q, want what app token printed", got)
+	if got := agent("FAKE_HOST_EXIT=0"); got != "ghs_app app[bot]" {
+		t.Errorf("an agent's command has GH_TOKEN and its author %q, want what app env printed", got)
 	}
-	if got := token("FAKE_HOST_EXIT=1"); !strings.HasSuffix(got, "rumblestrip-no-app-token") {
-		t.Errorf("with no token to be had, an agent's command has GH_TOKEN %q, want one that works nowhere", got)
+	if got := agent("FAKE_HOST_EXIT=1"); got != "rumblestrip-no-app-token " {
+		t.Errorf("with no App to act as, an agent's command has GH_TOKEN and its author %q, want a token that works nowhere", got)
 	}
-	if out, _ := l.given("{}").run(t, "FAKE_HOST_EXIT=1 CLAUDE_ENV_FILE="+envFile, "hook", "session-start"); !strings.Contains(out, "Rumblestrip: gh acts here as the App this repository names, and can't now: ") {
-		t.Errorf("a session's start with no token to be had says: %q", out)
+	why := "The agent acts on GitHub as the App this repository names, and can't now: the key of the App isn't on this machine."
+	for _, c := range []struct {
+		who, input string
+		args       []string
+		code       int
+		want       string
+	}{
+		{"a session's start", "{}", []string{"hook", "session-start"}, 0, why + " Until then, Rumblestrip refuses every command and edit but rumblestrip setup.\n"},
+		{"a command", `{"tool_name":"Bash","tool_input":{"command":"gh pr create"}}`, []string{"hook", "pre-tool"}, 2, "rumblestrip: " + why + "\n"},
+		{"rumblestrip setup", `{"tool_name":"Bash","tool_input":{"command":"rumblestrip setup"}}`, []string{"hook", "pre-tool"}, 0, ""},
+		{"setup", "", []string{"setup"}, 1, "rumblestrip: " + why + "\n"},
+	} {
+		if out, code := l.given(c.input).run(t, "FAKE_HOST_EXIT=1", c.args...); code != c.code || !strings.HasSuffix(out, c.want) {
+			t.Errorf("with no App to act as, %s ended %d, want %d: %q, want %q", c.who, code, c.code, out, c.want)
+		}
+	}
+	bin := filepath.Join(l.tmp, "cache", "rumblestrip", l.commit)
+	if err := os.Rename(bin, bin+".away"); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := l.given(`{}`).run(t, "", "hook", "stop"); code != 2 || !strings.Contains(out, "isn't installed on this machine: run rumblestrip setup, which installs it.") {
+		t.Errorf("with no rumblestrip for the pin on the machine, a hook ended %d: %q", code, out)
+	}
+	if err := os.Rename(bin+".away", bin); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -554,8 +593,8 @@ func launcherGivesTheAgentsGhTheAppsToken(t *testing.T, l launcher) {
 // blocks on, but on setup itself, the agent's second try to stop, and a
 // session's start, which tells the agent why; setup refuses where the image
 // can't run, on arm64 and in a submodule, whose git directory names its
-// working tree by its host path. Nothing is pulled or installed behind the
-// user's back.
+// working tree by its host path, and with a gh that would show the agent's
+// token. Nothing is pulled or installed behind the user's back.
 func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 	t.Helper()
 	bash := func(command string) string {
@@ -591,6 +630,8 @@ func launcherRefusesUntilSetup(t *testing.T, l launcher) {
 		{"setup on an arm64 machine", l, "FAKE_ARCH=arm64", "", []string{"setup"}, 1, "built for x86-64 only"},
 		{"a command in a submodule", submodule, "", push, []string{"hook", "pre-tool"}, 2, "can't use a submodule's git directory"},
 		{"setup in a submodule", submodule, "", "", []string{"setup"}, 1, "can't use a submodule's git directory"},
+		{"setup with gh 2.89", l, "FAKE_GH_VERSION=2.89.0", "", []string{"setup"}, 1, "rumblestrip: gh 2.89 shows most of the agent's token in gh auth status: ask the user to update gh to 2.97 or later, then run rumblestrip setup."},
+		{"setup with gh 1.99", l, "FAKE_GH_VERSION=1.99.0", "", []string{"setup"}, 1, "rumblestrip: gh 1.99 shows"},
 	} {
 		out, code := c.l.given(c.input).run(t, c.env, c.args...)
 		if code != c.code || (c.want == "") != (out == "") || !strings.Contains(out, c.want) {

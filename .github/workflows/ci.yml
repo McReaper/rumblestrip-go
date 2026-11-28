@@ -98,6 +98,17 @@ jobs:
           test "$code" = 2
           grep -q "run rumblestrip setup" "$RUNNER_TEMP/refusal"
           docker tag rumblestrip:ci "ghcr.io/mcreaper/rumblestrip:sha-$GITHUB_SHA"
+          # Until rumblestrip is installed for the pin, a hook refuses: the
+          # agent acts as the App through it. Here, a stand-in says it can.
+          code=0
+          printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"go test ./..."}}' "$app" |
+            "$launcher" hook pre-tool 2> "$RUNNER_TEMP/refusal" || code=$?
+          test "$code" = 2
+          grep -q "isn't installed on this machine: run rumblestrip setup" "$RUNNER_TEMP/refusal"
+          bin="${XDG_CACHE_HOME:-$HOME/.cache}/rumblestrip/$GITHUB_SHA"
+          mkdir -p "$bin"
+          printf '#!/bin/sh\n' > "$bin/rumblestrip"
+          chmod +x "$bin/rumblestrip"
           # A refusal comes back through docker exec: its exit code and its words.
           code=0
           printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git push origin main"}}' "$app" |

@@ -49,8 +49,8 @@ Rumblestrip ships every rule, pinned by version, and an app never carries its ow
 Drift (C2): the agent bends tests, thresholds and suppressions to get green.
 
 - **GitHub is the arbiter.**
-  - The agent is a GitHub App with access to contents and pull requests only, never to workflows or administration. `rumblestrip init` creates it, and the plugin's `gh` runs each of the agent's calls as it.
-  - Proof: `internal/platform/ghapp` tests. In a live test, GitHub refused the App a workflow push, a ruleset edit and a settings change.
+  - The agent is a GitHub App with access to contents and pull requests only, never to workflows or administration. `rumblestrip init` creates it; the agent's `gh` and `git` act as it on its repository alone.
+  - Proof: `internal/platform/ghapp` tests, `TestTheAgentsGitCommitsAndPushesAsTheApp`. In a live test, GitHub refused the App a workflow push, a ruleset edit and a settings change.
 - **An app's ruleset requires two checks, which only GitHub Actions can report:** `Pull request / Check` and `Rumblestrip / Owner approval`.
   - `rumblestrip init` applies it from `internal/initrepo/files/ruleset.json`. Code owners review the harness only. Once both checks pass, Rumblestrip's merge job merges the change as the App.
   - Proof: `TestTheAppsRulesetMergesAGreenChangeAndHoldsWhatIsTheOwners`, `TestTheRequiredCheckNeverSkips`, `TestTheMergeJobMergesAsTheRepositorysAppOrSaysHowToGiveItOne`, `TestOnlyTheReviewSheetsJobPostsTheOwnersApproval`, `TestAPullRequestOnAnotherBranchIsInAStackOrTheCheckSaysHow`.
@@ -97,7 +97,7 @@ Drift (C2): the agent bends tests, thresholds and suppressions to get green.
     - editing `.github/`, `.rumblestrip/` or `.claude/`;
     - a commit with a staged secret.
   - `post-edit` lints each package the agent edits, and `stop` runs the full check once before the agent stops.
-  - Until `rumblestrip setup` has pulled the image, the hooks refuse every command and edit but setup.
+  - Until `rumblestrip setup` has pulled the image and the agent can act as its App, the hooks refuse every command and edit but setup.
   - `.claude/settings.json` holds the deny rules, and `docs/managed-settings.json` puts them where the agent can't undo them.
   - All of this only slows the agent down: GitHub's rules are what hold.
   - Proof: `TestThePreToolHookRefusesAGestureAndACommitWithAStagedSecret`, `TestThePostEditHookTellsTheAgentWhatItsEditBroke`, `TestTheStopHookLetsTheAgentStopOnItsSecondTry`, `TestTheAgentSettingsDenyBypassesAndThePluginRunsRumblestripsHooks`, `TestThePluginShipsWhatItsManifestsAndHooksName`.
