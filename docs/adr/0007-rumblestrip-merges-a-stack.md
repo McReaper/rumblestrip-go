@@ -7,7 +7,7 @@ The build's pull request sits on the spec's branch, and the two form one GitHub 
 Rumblestrip itself merges a pull request into the default branch once its check passes:
 
 - through GitHub's asynchronous merge;
-- as a GitHub App, which needs contents and pull requests write. It can be the agent's App or any other. `rumblestrip init github` stores its Client ID and key as the repository's secrets.
+- as a GitHub App, which needs contents and pull requests write. It can be the agent's App or any other. `rumblestrip init` stores its Client ID and key as the repository's secrets.
 
 It turns on no auto-merge, and no job of its own moves pull requests or deletes branches.
 
