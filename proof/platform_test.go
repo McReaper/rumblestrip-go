@@ -369,6 +369,7 @@ esac
 
 const fakeGh = `#!/bin/sh
 echo "gh $*" >> "$FAKE_GH_LOG"
+[ -z "${GH_TOKEN-}" ] || echo "gh with GH_TOKEN $*" >> "$FAKE_GH_LOG"
 case "$1 $2" in
   "extension list") if [ -e "$FAKE_GH_LOG.stack" ]; then echo "gh stack	github/gh-stack	v0.3.0"; fi ;;
   "extension install") touch "$FAKE_GH_LOG.stack" ;;
@@ -487,8 +488,8 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	l := newLauncher(t)
 	image := "ghcr.io/mcreaper/rumblestrip:sha-" + l.commit
 	launcherRefusesUntilSetup(t, l)
-	for range 2 {
-		if out, code := l.run(t, "", "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
+	for _, env := range []string{"GH_TOKEN=rumblestrip-no-app-token", ""} {
+		if out, code := l.run(t, env, "setup"); code != 0 || !strings.HasSuffix(out, " is set up: its checks run in "+image+".\n") {
 			t.Errorf("setup ended %d: %q", code, out)
 		}
 	}
@@ -504,7 +505,48 @@ func launcherRunsThePinnedVersion(t *testing.T) {
 	if n := strings.Count(l.ghCalls(t), "gh extension install github/gh-stack --pin v0.3.0\n"); n != 1 {
 		t.Errorf("setup installed gh stack %d times, want once, at the pinned version", n)
 	}
+	if calls := l.ghCalls(t); strings.Contains(calls, "gh with GH_TOKEN") {
+		t.Errorf("setup installed gh stack with the agent's GH_TOKEN, not as the user:\n%s", calls)
+	}
+	launcherGivesTheAgentsGhTheAppsToken(t, l)
 	launcherRunsChecksInTheImage(t, l, image)
+}
+
+// WHY: the agent's gh acts as the App whichever gh it runs: at a session's
+// start, the launcher has Claude Code give each of the agent's commands
+// GH_TOKEN from app token on the host, once however often the session
+// resumes. With no token to be had, gh gets one that works nowhere, never
+// the owner's account, and the session's start says why.
+func launcherGivesTheAgentsGhTheAppsToken(t *testing.T, l launcher) {
+	t.Helper()
+	envFile := filepath.ToSlash(filepath.Join(t.TempDir(), "env.sh"))
+	for range 2 {
+		if out, _ := l.given("{}").run(t, "CLAUDE_ENV_FILE="+envFile, "hook", "session-start"); strings.Contains(out, "can't now") {
+			t.Errorf("a session's start with a token to be had says: %q", out)
+		}
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil || strings.Count(string(data), "export GH_TOKEN=") != 1 {
+		t.Fatalf("after a session's start and its resume, the env file reads %q: %v, want GH_TOKEN once", data, err)
+	}
+	token := func(env string) string {
+		cmd := exec.CommandContext(t.Context(), "sh", "-c", `. "$1"; printf %s "$GH_TOKEN"`, "sh", envFile)
+		cmd.Env = append(os.Environ(), env)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("an agent's command: %v", err)
+		}
+		return string(out)
+	}
+	if got := token("FAKE_HOST_EXIT=0"); got != "host rumblestrip app token" {
+		t.Errorf("an agent's command has GH_TOKEN %q, want what app token printed", got)
+	}
+	if got := token("FAKE_HOST_EXIT=1"); !strings.HasSuffix(got, "rumblestrip-no-app-token") {
+		t.Errorf("with no token to be had, an agent's command has GH_TOKEN %q, want one that works nowhere", got)
+	}
+	if out, _ := l.given("{}").run(t, "FAKE_HOST_EXIT=1 CLAUDE_ENV_FILE="+envFile, "hook", "session-start"); !strings.Contains(out, "Rumblestrip: gh acts here as the App this repository names, and can't now: ") {
+		t.Errorf("a session's start with no token to be had says: %q", out)
+	}
 }
 
 // WHY: until rumblestrip setup has pulled the pin's image, the agent never
@@ -687,7 +729,7 @@ func TestThePluginShipsWhatItsManifestsAndHooksName(t *testing.T) {
 	if manifest.Name != "rumblestrip" {
 		t.Errorf("the plugin is named %q", manifest.Name)
 	}
-	for _, script := range []string{"plugin/bin/rumblestrip", "plugin/bin/gh"} {
+	for _, script := range []string{"plugin/bin/rumblestrip"} {
 		mode, err := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "../"+script).Output()
 		if err != nil || !strings.HasPrefix(string(mode), "100755 ") {
 			t.Errorf("%s is not executable in git: %q, %v", script, mode, err)
