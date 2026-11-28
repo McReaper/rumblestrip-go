@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/McReaper/rumblestrip-go/internal/platform/ghapp"
+	"github.com/McReaper/rumblestrip-go/internal/platform/git"
 	"github.com/spf13/cobra"
 )
 
-var errNoApp = errors.New("give the app's Client ID and key: --client-id and --key, or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY")
+var errNoApp = errors.New("the agent acts on GitHub as your App, and none is set up on this machine: run rumblestrip init app, or give its Client ID and key, --client-id and --key, or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY")
 
 type appOptions struct {
 	clientID     string
@@ -34,6 +35,11 @@ func appCommand(out io.Writer) *cobra.Command {
 }
 
 func (o *appOptions) jwt() (string, error) {
+	if o.clientID == "" && o.key == "" {
+		if err := o.fromConfig(); err != nil && !errors.Is(err, ghapp.ErrNoConfig) {
+			return "", err
+		}
+	}
 	if o.clientID == "" || o.key == "" {
 		return "", errNoApp
 	}
@@ -42,6 +48,21 @@ func (o *appOptions) jwt() (string, error) {
 		return "", err
 	}
 	return ghapp.JWT(o.clientID, key, time.Now())
+}
+
+// WHY: the plugin's gh runs each call through app exec with nothing
+// given: the App rumblestrip init app saved is the one.
+func (o *appOptions) fromConfig() error {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return fmt.Errorf("the App: %w", err)
+	}
+	c, err := ghapp.LoadConfig(dir)
+	if err != nil {
+		return err
+	}
+	o.clientID, o.key = c.ClientID, c.Key
+	return nil
 }
 
 func installationsCommand(o *appOptions, out io.Writer) *cobra.Command {
@@ -87,6 +108,11 @@ func runAsApp(ctx context.Context, o *appOptions, argv []string) error {
 		return err
 	}
 	c := ghapp.NewClient()
+	if o.installation == 0 {
+		if o.installation, err = repoInstallation(ctx, c, jwt); err != nil {
+			return err
+		}
+	}
 	tok, err := c.Token(ctx, jwt, o.installation)
 	if err != nil {
 		return err
@@ -100,4 +126,18 @@ func runAsApp(ctx context.Context, o *appOptions, argv []string) error {
 		return err
 	}
 	return ghapp.Exec(ctx, argv, ghapp.Bot{Token: tok, Identity: id})
+}
+
+// WHY: given no installation, the one that holds the repository the
+// command runs in is the one: the plugin's gh runs in the agent's clone.
+func repoInstallation(ctx context.Context, c ghapp.Client, jwt string) (int64, error) {
+	repo, err := git.OriginRepo(ctx, ".")
+	if err != nil {
+		return 0, fmt.Errorf("which installation of the App: %w", err)
+	}
+	inst, err := c.RepoInstallation(ctx, jwt, repo)
+	if err != nil {
+		return 0, fmt.Errorf("the App isn't installed on %s, or can't be reached: install it there: %w", repo, err)
+	}
+	return inst.ID, nil
 }

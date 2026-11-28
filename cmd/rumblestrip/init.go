@@ -277,11 +277,11 @@ func appMux(manifest []byte, org string, created chan<- initrepo.App) http.Handl
 // WHY: the key goes beside the user's other configuration, readable by them
 // alone, never into a repository.
 func saveApp(out io.Writer, app initrepo.App) error {
-	dir, err := os.UserConfigDir()
+	config, err := os.UserConfigDir()
 	if err != nil {
 		return fmt.Errorf("rumblestrip init app: %w", err)
 	}
-	dir = filepath.Join(dir, "rumblestrip-go")
+	dir := filepath.Join(config, "rumblestrip-go")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("rumblestrip init app: %w", err)
 	}
@@ -289,16 +289,18 @@ func saveApp(out io.Writer, app initrepo.App) error {
 	if err := os.WriteFile(key, []byte(app.PEM), 0o600); err != nil {
 		return fmt.Errorf("rumblestrip init app: %w", err)
 	}
+	if err := ghapp.SaveConfig(config, ghapp.Config{ClientID: app.ClientID, Key: key}); err != nil {
+		return fmt.Errorf("rumblestrip init app: %w", err)
+	}
 	_, err = fmt.Fprintf(out, `The App %s is created (id %d). Its private key: %s
 
 Install it on the repositories the agent works in:
   https://github.com/apps/%s/installations/new
 
-The agent acts as it with rumblestrip app exec, and Rumblestrip merges as it once
+In Claude Code, the agent's gh acts as it, and Rumblestrip merges as it once
 rumblestrip init github --repo OWNER/REPO ran, given:
   RUMBLESTRIP_APP_CLIENT_ID=%s
   RUMBLESTRIP_APP_KEY=%s
-  RUMBLESTRIP_APP_INSTALLATION=<the installation's id: rumblestrip app installations lists it>
 `, app.Slug, app.ID, key, app.Slug, app.ClientID, key)
 	return err
 }

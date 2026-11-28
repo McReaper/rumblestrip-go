@@ -1,0 +1,29 @@
+#!/bin/sh
+# gh, as the repository's App. Claude Code puts the plugin's bin first on
+# the PATH of the agent's commands, so the agent's gh acts as the App
+# rumblestrip init app made, never as the owner's account: that one can
+# merge past every rule, and the owner can't approve a pull request it
+# opened. Each call gets a fresh token through rumblestrip app exec, since
+# a token lasts an hour. With no App set up, app exec refuses and says how.
+set -eu
+self=$(cd "$(dirname "$0")" && pwd -P)
+real=
+saved_ifs=$IFS
+IFS=:
+for d in $PATH; do
+  if [ -z "$d" ] || [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$self" ]; then
+    continue
+  fi
+  for c in "$d/gh" "$d/gh.exe"; do
+    if [ -f "$c" ] && [ -x "$c" ]; then
+      real=$c
+      break 2
+    fi
+  done
+done
+IFS=$saved_ifs
+if [ -z "$real" ]; then
+  echo "rumblestrip: gh, the GitHub CLI, isn't installed: ask the user to install it" >&2
+  exit 1
+fi
+exec "$self/rumblestrip" app exec -- "$real" "$@"

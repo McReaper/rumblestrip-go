@@ -665,11 +665,13 @@ func TestThePluginShipsWhatItsManifestsAndHooksName(t *testing.T) {
 	if manifest.Name != "rumblestrip" {
 		t.Errorf("the plugin is named %q", manifest.Name)
 	}
-	mode, err := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "../plugin/bin/rumblestrip").Output()
-	if err != nil || !strings.HasPrefix(string(mode), "100755 ") {
-		t.Errorf("plugin/bin/rumblestrip is not executable in git: %q, %v", mode, err)
+	for _, script := range []string{"plugin/bin/rumblestrip", "plugin/bin/gh"} {
+		mode, err := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "../"+script).Output()
+		if err != nil || !strings.HasPrefix(string(mode), "100755 ") {
+			t.Errorf("%s is not executable in git: %q, %v", script, mode, err)
+		}
+		runIn(t, place{dir: ".."}, "shellcheck", script)
 	}
-	runIn(t, place{dir: ".."}, "shellcheck", "plugin/bin/rumblestrip")
 	launcherRunsThePinnedVersion(t)
 	rules, err := os.ReadFile("../plugin/rules.md")
 	if err != nil {
