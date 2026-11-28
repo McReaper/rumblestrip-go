@@ -1,0 +1,4 @@
+# M9: a change with no code owes no reread, though a doc is due: here a new doc, never reread. Nothing
+# changed for a doc to be wrong about.
+!isolated
+!expect-none docs

@@ -75,7 +75,7 @@ func TestAChangeOwesTheOldestDueDocsCountingThoseItRereads(t *testing.T) {
 		{Path: "b.md", Due: true},
 		{Path: "c.md", Due: true, Commit: "c1", Date: "2026-01-01"},
 		{Path: "d.md", Due: false, Here: true, Commit: "c1"},
-	}}
+	}, Code: 12}
 	if got := paths(r.Required()); got != "b.md a.md" {
 		t.Errorf("Required: %s, want the never-reread doc first, then by date and path: b.md a.md", got)
 	}
@@ -86,6 +86,20 @@ func TestAChangeOwesTheOldestDueDocsCountingThoseItRereads(t *testing.T) {
 	r.Docs[1].Here = true
 	if got := paths(r.Required()); got != "" {
 		t.Errorf("Required, two due docs reread here: %s, want none", got)
+	}
+}
+
+func TestAChangeWithNoCodeOwesNothing(t *testing.T) {
+	r := staledocs.Report{Docs: []staledocs.Doc{{Path: "a.md", Due: true}}}
+	if got := paths(r.Required()); got != "" {
+		t.Errorf("Required, no code changed: %s, want none", got)
+	}
+	if got := paths(r.Owed()); got != "a.md" {
+		t.Errorf("Owed, no code changed: %s, want a.md, still due for the next change to the code", got)
+	}
+	r.Code = 1
+	if got := paths(r.Required()); got != "a.md" {
+		t.Errorf("Required, one line of code changed: %s, want a.md", got)
 	}
 }
 

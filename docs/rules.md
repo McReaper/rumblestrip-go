@@ -231,9 +231,10 @@ Proof: `m8-vulnerable-dep`, `m8-untidy`, `t2-gomod`, `guard-gomod`, `ci-workflow
 - ADRs, and `// WHY:` comments.
 - `rumblestrip docs` asks for each markdown file to be reread once 25% of the code has changed since its last reread.
   - At most two docs per change, the oldest first.
+  - A change with no code owes none: a dependency's update or a doc's fix gives a doc nothing new to be wrong about.
   - `.rumblestrip/reread.jsonl` records the rereads.
 
-Proof: `m9-docs-due`, `m9-docs-reread`, `guard-reread-skip`, `TestTheAppCodeOwnersLeaveTheRereadsToTheAgent`. Left to review: whether a reread doc says what the code does.
+Proof: `m9-docs-due`, `m9-docs-reread`, `m9-docs-no-code`, `guard-reread-skip`, `TestTheAppCodeOwnersLeaveTheRereadsToTheAgent`. Left to review: whether a reread doc says what the code does.
 
 ## M10: testability (blocking)
 
