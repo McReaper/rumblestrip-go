@@ -8,18 +8,17 @@ What each step of the README's setup sets, and why the agent can't undo it. You 
 - `.github/CODEOWNERS`: you own the agent's instructions and the CI, so GitHub waits for your approval on them.
 - `.github/dependabot.yml`: the pin, and the Go dependencies, kept up to date.
 - `.claude/settings.json`: turns Rumblestrip's plugin on for Claude Code, refuses the gestures that reach past it (merging, a force push to `main`, skipping hooks, editing `.github/`), and makes the agent's commits name you as co-author.
-
-`rumblestrip check` fails once the two workflows differ from what the version they pin writes: delete them and run `rumblestrip init` again.
+- `.rumblestrip/app.json`: the App the agent acts as here, by its Client ID, no secret. It's yours: the agent can't change who it is.
 
 ## `rumblestrip init app`: the agent's identity
 
 A GitHub App the agent acts as, created from Rumblestrip's manifest in your browser. Its private key goes to your configuration directory, never into a repository. Install it on the repositories it works on.
 
-It may write code and pull requests. It may not touch the workflows or the repository's settings, so it can't change the rules that judge it, even through a pull request. In Claude Code, the agent's `gh` acts as it, so you can approve what it opens. An App of yours will do: set `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`.
+It may write code and pull requests. It may not touch the workflows or the repository's settings, so it can't change the rules that judge it, even through a pull request. In Claude Code, the agent's `gh` acts as it, so you can approve what it opens. An App of yours will do: `rumblestrip init --client-id <its Client ID>`.
 
 ## `rumblestrip init github`: the rules GitHub enforces
 
-With the App's `RUMBLESTRIP_APP_CLIENT_ID` and `RUMBLESTRIP_APP_KEY`, it checks the App is installed on the repository before it changes anything. Then:
+It checks the App the repository names is installed on it before it changes anything. Then:
 
 - **The default branch** takes changes only through a pull request, squash-merged. It needs two checks, both from GitHub Actions: `Pull request / Check`, every check passed, and `Rumblestrip / Owner approval`, your approval of what is yours.
 - **Tags and releases**: only you create or move a tag, and a published release can't change.

@@ -43,6 +43,15 @@ func OriginRepo(ctx context.Context, dir string) (string, error) {
 	return m[1], nil
 }
 
+// Toplevel returns the root of the working tree dir is in.
+func Toplevel(ctx context.Context, dir string) (string, error) {
+	out, err := Run(ctx, dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // CheckRef refuses a ref that git would take for an option.
 func CheckRef(ref string) error {
 	if strings.HasPrefix(ref, "-") {

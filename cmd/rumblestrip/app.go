@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"time"
@@ -14,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var errNoApp = errors.New("the agent acts on GitHub as your App, and none is set up on this machine: run rumblestrip init app, or give its Client ID and key, --client-id and --key, or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY")
+var errNoApp = errors.New("the agent acts on GitHub as the App its repository names in " + ghapp.RepoFile + ", and this repository names none: the owner runs rumblestrip init, which names one, or gives one with --client-id and --key, or RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY")
 
 type appOptions struct {
 	clientID     string
@@ -34,14 +35,9 @@ func appCommand(out io.Writer) *cobra.Command {
 	return app
 }
 
-func (o *appOptions) jwt() (string, error) {
-	if o.clientID == "" && o.key == "" {
-		if err := o.fromConfig(); err != nil && !errors.Is(err, ghapp.ErrNoConfig) {
-			return "", err
-		}
-	}
-	if o.clientID == "" || o.key == "" {
-		return "", errNoApp
+func (o *appOptions) jwt(ctx context.Context) (string, error) {
+	if err := o.resolve(ctx); err != nil {
+		return "", err
 	}
 	key, err := ghapp.LoadKey(o.key)
 	if err != nil {
@@ -51,18 +47,41 @@ func (o *appOptions) jwt() (string, error) {
 }
 
 // WHY: the plugin's gh runs each call through app exec with nothing
-// given: the App rumblestrip init app saved is the one.
-func (o *appOptions) fromConfig() error {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return fmt.Errorf("the App: %w", err)
+// given. The repository names its App, in a file the owner commits, and
+// the machine keeps that App's key: a clone acts as the App its
+// repository names, on any machine, and no key goes into git.
+func (o *appOptions) resolve(ctx context.Context) error {
+	if o.clientID == "" {
+		id, err := namedApp(ctx)
+		if err != nil {
+			return err
+		}
+		o.clientID = id
 	}
-	c, err := ghapp.LoadConfig(dir)
-	if err != nil {
-		return err
+	if o.key != "" {
+		return nil
 	}
-	o.clientID, o.key = c.ClientID, c.Key
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return fmt.Errorf("the App's key: %w", err)
+	}
+	o.key = ghapp.MachineKey(config, o.clientID)
+	if _, err := os.Stat(o.key); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("the key of the App %s isn't on this machine: put it at %s, or give it with --key or RUMBLESTRIP_APP_KEY", o.clientID, o.key)
+	}
 	return nil
+}
+
+func namedApp(ctx context.Context) (string, error) {
+	top, err := git.Toplevel(ctx, ".")
+	if err != nil {
+		return "", fmt.Errorf("which App: %w", err)
+	}
+	id, err := ghapp.RepoApp(top)
+	if errors.Is(err, ghapp.ErrNoRepoApp) {
+		return "", errNoApp
+	}
+	return id, err
 }
 
 func installationsCommand(o *appOptions, out io.Writer) *cobra.Command {
@@ -71,7 +90,7 @@ func installationsCommand(o *appOptions, out io.Writer) *cobra.Command {
 		Short: "List where the app is installed",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			jwt, err := o.jwt()
+			jwt, err := o.jwt(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -103,7 +122,7 @@ func execCommand(o *appOptions) *cobra.Command {
 }
 
 func runAsApp(ctx context.Context, o *appOptions, argv []string) error {
-	jwt, err := o.jwt()
+	jwt, err := o.jwt(ctx)
 	if err != nil {
 		return err
 	}

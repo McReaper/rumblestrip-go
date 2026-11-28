@@ -73,9 +73,9 @@ In a Go repository on GitHub, with Go, Docker and the `gh` CLI:
 
 ```sh
 go install github.com/McReaper/rumblestrip-go/cmd/rumblestrip@latest
-rumblestrip init --owner <your GitHub login>   # the workflows and settings: commit and push them
 rumblestrip init app --name <agent name>       # once: the agent's GitHub App; install it on the repository
-rumblestrip init github --repo <you>/<repo>    # the rules GitHub enforces, with the App's RUMBLESTRIP_APP_CLIENT_ID and RUMBLESTRIP_APP_KEY
+rumblestrip init --owner <your GitHub login>   # the workflows, the settings, the App's name: commit and push them
+rumblestrip init github                        # the rules GitHub enforces
 ```
 
 Then open Claude Code in the repository, run `/rumblestrip:setup` once, and ask for a feature. A new app can start from the [template](template).

@@ -19,6 +19,7 @@ import (
 	"text/template"
 
 	"github.com/McReaper/rumblestrip-go/internal/guard"
+	"github.com/McReaper/rumblestrip-go/internal/platform/ghapp"
 )
 
 //go:embed files
@@ -31,12 +32,14 @@ type Version struct {
 	Commit string
 }
 
-// Options say what the files name: the Rumblestrip version, the owner's login, and
-// the owner's address the agent's commits name them co-author by.
+// Options say what the files name: the Rumblestrip version, the owner's login,
+// the owner's address the agent's commits name them co-author by, and the
+// Client ID of the App the agent acts as, when there is one.
 type Options struct {
 	Version    Version
 	Owner      string
 	OwnerEmail string
+	ClientID   string
 }
 
 // File is one file of the repository: its path from the root, its content.
@@ -50,13 +53,21 @@ func Files(o Options) ([]File, error) {
 	if o.Owner == "" || o.OwnerEmail == "" || len(o.Version.Commit) != 40 {
 		return nil, errors.New("rumblestrip init needs the owner's login and address and Rumblestrip's full commit id")
 	}
-	return renderAll(o, []struct{ path, from string }{
+	out, err := renderAll(o, []struct{ path, from string }{
 		{".github/workflows/rumblestrip.yml", "rumblestrip.yml"},
 		{".github/workflows/rumblestrip-approval.yml", "rumblestrip-approval.yml"},
 		{".github/CODEOWNERS", "CODEOWNERS"},
 		{".github/dependabot.yml", "dependabot.yml"},
 		{".claude/settings.json", "settings.json"},
 	})
+	if err != nil || o.ClientID == "" {
+		return out, err
+	}
+	app, err := ghapp.RepoAppFile(o.ClientID)
+	if err != nil {
+		return nil, fmt.Errorf("rumblestrip init: %w", err)
+	}
+	return append(out, File{ghapp.RepoFile, app}), nil
 }
 
 type templateData struct {
