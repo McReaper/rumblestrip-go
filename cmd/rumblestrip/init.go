@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"regexp"
 	"runtime/debug"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/McReaper/rumblestrip-go/internal/initrepo"
 	"github.com/McReaper/rumblestrip-go/internal/platform/ghapp"
@@ -28,33 +24,60 @@ type initOptions struct {
 	ownerEmail string
 	version    string
 	clientID   string
+	app        initAppOptions
 }
 
 func initCommand(out io.Writer) *cobra.Command {
 	var o initOptions
-	cmd := leaf("init", "Write the files a repository keeps for Rumblestrip: its CI, code owners, Dependabot and Claude Code settings", func(cmd *cobra.Command) error {
+	cmd := leaf("init", "As the owner, in the repository's clone: the agent's GitHub App, its installation, the files the repository keeps, the rules GitHub enforces, each step once", func(cmd *cobra.Command) error {
 		return runInit(cmd.Context(), out, o)
 	})
-	cmd.Flags().StringVar(&o.owner, "owner", "", "the owner's GitHub login, the code owner of the harness")
-	cmd.Flags().StringVar(&o.version, "version", "", "the Rumblestrip release to pin, a tag (default: this binary's own version)")
-	cmd.Flags().StringVar(&o.ownerEmail, "owner-email", "", "the owner's address the agent's commits name them co-author by (default: their GitHub no-reply address)")
-	cmd.Flags().StringVar(&o.clientID, "client-id", os.Getenv("RUMBLESTRIP_APP_CLIENT_ID"), "the Client ID of the App the agent acts as here (default: the one whose key this machine keeps; RUMBLESTRIP_APP_CLIENT_ID)")
+	flags := cmd.Flags()
+	flags.StringVar(&o.owner, "owner", "", "the owner's GitHub login, the code owner of the harness (default: the owner of the repository origin names)")
+	flags.StringVar(&o.version, "version", "", "the Rumblestrip release to pin, a tag (default: this binary's own version)")
+	flags.StringVar(&o.ownerEmail, "owner-email", "", "the owner's address the agent's commits name them co-author by (default: their GitHub no-reply address)")
+	flags.StringVar(&o.clientID, "client-id", os.Getenv("RUMBLESTRIP_APP_CLIENT_ID"), "the Client ID of the App the agent acts as here (default: the one "+ghapp.RepoFile+" names, or whose key this machine keeps; RUMBLESTRIP_APP_CLIENT_ID)")
+	flags.StringVar(&o.app.name, "app-name", "", "the name of the App init creates when there is none, unique on GitHub (default: <owner>-agent)")
+	flags.StringVar(&o.app.org, "org", "", "create that App for this organization rather than your account")
 	cmd.AddCommand(initGitHubCommand(out), initAppCommand(out))
 	return cmd
 }
 
+// WHY: the owner runs one command, and again after each step it leaves
+// them, installing the App and pushing the files: it skips what is done,
+// the App the repository names or the machine keeps, an installation
+// already there, a file the repository has.
 func runInit(ctx context.Context, out io.Writer, o initOptions) error {
+	repo, err := git.OriginRepo(ctx, ".")
+	if err != nil {
+		return fmt.Errorf("rumblestrip init: run it in the repository's clone: %w", err)
+	}
+	if o.owner == "" {
+		o.owner, _, _ = strings.Cut(repo, "/")
+	}
+	app, err := agentApp(ctx, out, o)
+	if err != nil {
+		return err
+	}
+	if err := awaitInstallation(ctx, out, installTarget{app, repo}); err != nil {
+		return err
+	}
+	o.clientID = app.clientID
+	if err := writeFiles(ctx, out, o); err != nil {
+		return err
+	}
+	return protectOncePushed(ctx, out, initGitHubOptions{repo: repo, clientID: app.clientID, key: app.key})
+}
+
+func writeFiles(ctx context.Context, out io.Writer, o initOptions) error {
 	v, err := pinned(ctx, o.version)
 	if err != nil {
 		return err
 	}
-	if o.ownerEmail == "" && o.owner != "" {
+	if o.ownerEmail == "" {
 		if o.ownerEmail, err = noReply(ctx, ghapp.NewClient(), o.owner); err != nil {
 			return fmt.Errorf("rumblestrip init: %w", err)
 		}
-	}
-	if o.clientID, err = appToName(ctx, o.clientID); err != nil {
-		return fmt.Errorf("rumblestrip init: %w", err)
 	}
 	fs, err := initrepo.Files(initrepo.Options{Version: v, Owner: o.owner, OwnerEmail: o.ownerEmail, ClientID: o.clientID})
 	if err != nil {
@@ -64,7 +87,7 @@ func runInit(ctx context.Context, out io.Writer, o initOptions) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(out, initReport(r, o.clientID != ""))
+	_, err = io.WriteString(out, initReport(r))
 	return err
 }
 
@@ -135,7 +158,7 @@ func shortVersion(v string) string {
 	return v
 }
 
-func initReport(r initrepo.Report, named bool) string {
+func initReport(r initrepo.Report) string {
 	var b strings.Builder
 	for _, p := range r.Written {
 		fmt.Fprintf(&b, "written: %s\n", p)
@@ -146,11 +169,6 @@ func initReport(r initrepo.Report, named bool) string {
 	for _, p := range r.Kept {
 		fmt.Fprintf(&b, "kept, it differs from Rumblestrip's: %s (delete it and run rumblestrip init again to take Rumblestrip's)\n", p)
 	}
-	if !named {
-		b.WriteString("\nNo App is named here: rumblestrip init app creates the agent's, then run rumblestrip init again, which names it in " + ghapp.RepoFile + ".\n")
-		return b.String()
-	}
-	b.WriteString("\nCommit and push them. Then, as the owner, rumblestrip init github: the rules GitHub enforces, and the App Rumblestrip merges as.\n")
 	return b.String()
 }
 
@@ -213,124 +231,4 @@ func mergeApp(ctx context.Context, o initGitHubOptions) (initrepo.MergeApp, erro
 		return initrepo.MergeApp{}, fmt.Errorf("rumblestrip init github: %w", err)
 	}
 	return initrepo.MergeApp{Repo: o.repo, ClientID: app.clientID, Key: key, Installation: inst}, nil
-}
-
-type initAppOptions struct {
-	name string
-	org  string
-}
-
-func initAppCommand(out io.Writer) *cobra.Command {
-	var o initAppOptions
-	cmd := leaf("app", "As the owner: create the agent's GitHub App from Rumblestrip's manifest, through your browser", func(cmd *cobra.Command) error {
-		return runInitApp(cmd.Context(), out, o)
-	})
-	flags := cmd.Flags()
-	flags.StringVar(&o.name, "name", "", "the App's name, unique on GitHub")
-	flags.StringVar(&o.org, "org", "", "create it for this organization rather than your account")
-	return cmd
-}
-
-// WHY: GitHub's manifest flow ends in a redirect to a page of the owner's
-// machine carrying a one-time code; a local server serves the form that
-// starts it and takes the code back, so the private key goes from GitHub
-// to the owner's disk and nowhere else.
-func runInitApp(ctx context.Context, out io.Writer, o initAppOptions) error {
-	if o.name == "" {
-		return errors.New("rumblestrip init app: name the App with --name")
-	}
-	l, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("rumblestrip init app: %w", err)
-	}
-	base := "http://" + l.Addr().String()
-	manifest, err := initrepo.Manifest(o.name, base+"/created")
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(out, "Open %s in your browser, and create the App on GitHub.\n", base); err != nil {
-		return errors.Join(err, l.Close())
-	}
-	app, err := serveUntilCreated(ctx, l, appHandler(manifest, o.org))
-	if app.Slug == "" {
-		return errors.Join(errors.New("rumblestrip init app: no App was created"), err)
-	}
-	return errors.Join(err, saveApp(out, app))
-}
-
-// WHY: the server lives until GitHub's redirect brings the App back, the
-// owner gives up (the context), or a quarter of an hour passes.
-func serveUntilCreated(ctx context.Context, l net.Listener, h func(chan<- initrepo.App) http.Handler) (initrepo.App, error) {
-	created := make(chan initrepo.App, 1)
-	srv := &http.Server{Handler: h(created), ReadHeaderTimeout: 10 * time.Second}
-	var serveErr error
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		if err := srv.Serve(l); !errors.Is(err, http.ErrServerClosed) {
-			serveErr = err
-		}
-	})
-	var app initrepo.App
-	select {
-	case app = <-created:
-	case <-ctx.Done():
-	case <-time.After(15 * time.Minute):
-	}
-	err := srv.Shutdown(context.WithoutCancel(ctx))
-	wg.Wait()
-	return app, errors.Join(err, serveErr)
-}
-
-func appHandler(manifest []byte, org string) func(chan<- initrepo.App) http.Handler {
-	return func(created chan<- initrepo.App) http.Handler {
-		return appMux(manifest, org, created)
-	}
-}
-
-func appMux(manifest []byte, org string, created chan<- initrepo.App) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
-		if err := initrepo.Form(w, initrepo.NewAppURL(org), manifest); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-	mux.HandleFunc("GET /created", func(w http.ResponseWriter, r *http.Request) {
-		ex := initrepo.Exchanger{Client: &http.Client{Timeout: 30 * time.Second}, BaseURL: "https://api.github.com"}
-		app, err := ex.Exchange(r.Context(), r.URL.Query().Get("code"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		select {
-		case created <- app:
-		default:
-		}
-		if _, err := io.WriteString(w, "The App is created: go back to your terminal.\n"); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-	return mux
-}
-
-// WHY: the key goes beside the user's other configuration, readable by them
-// alone, never into a repository: a repository names the App by its
-// Client ID, and the machine finds the key by it.
-func saveApp(out io.Writer, app initrepo.App) error {
-	config, err := os.UserConfigDir()
-	if err != nil {
-		return fmt.Errorf("rumblestrip init app: %w", err)
-	}
-	key, err := ghapp.SaveKey(config, app.ClientID, []byte(app.PEM))
-	if err != nil {
-		return fmt.Errorf("rumblestrip init app: %w", err)
-	}
-	_, err = fmt.Fprintf(out, `The App %s is created (id %d, Client ID %s). Its private key: %s
-
-Install it on the repositories the agent works in:
-  https://github.com/apps/%s/installations/new
-
-Then run rumblestrip init in each of them: it names the App in %s, and there
-the agent's gh acts as it.
-`, app.Slug, app.ID, app.ClientID, key, app.Slug, ghapp.RepoFile)
-	return err
 }

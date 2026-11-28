@@ -42,6 +42,6 @@ Everything else, the tests included, the checks judge.
 
 - **A check stays red** after the agent's push: open Check's summary. It says which check, what it wants, and what it found: that's what to tell the agent.
 - **"A job of Rumblestrip did not finish"**: GitHub's runner failed, not the change. Re-run the failed jobs.
-- **"No App to merge as"**: the repository gives Rumblestrip no App to merge with. Run `rumblestrip init github` again in its clone.
+- **"No App to merge as"**: the repository gives Rumblestrip no App to merge with. Run `rumblestrip init` again in its clone.
 - **"The merge is still pending"**: re-run the Merge job.
 - **"Not in a stack"**: the agent didn't stack the pull request on the one below it. Tell it.

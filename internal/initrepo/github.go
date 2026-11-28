@@ -88,6 +88,20 @@ func Protect(ctx context.Context, api API, repo string) ([]string, error) {
 	return append(done, "releases immutable"), nil
 }
 
+// Pushed says whether the default branch of repo ("owner/name") holds
+// Rumblestrip's workflow: a commit there touched it.
+func Pushed(ctx context.Context, api API, repo string) (bool, error) {
+	out, err := api.Call(ctx, Request{Method: "GET", Path: "repos/" + repo + "/commits?path=.github/workflows/rumblestrip.yml&per_page=1"})
+	if err != nil {
+		return false, fmt.Errorf("rumblestrip init: is Rumblestrip's workflow on the default branch of %s? %w", repo, err)
+	}
+	var commits []json.RawMessage
+	if err := json.Unmarshal(out, &commits); err != nil {
+		return false, fmt.Errorf("rumblestrip init: the commits of %s: %w", repo, err)
+	}
+	return len(commits) > 0, nil
+}
+
 func rulesets(ctx context.Context, api API, repo string) (map[string]int64, error) {
 	out, err := api.Call(ctx, Request{Method: "GET", Path: "repos/" + repo + "/rulesets"})
 	if err != nil {

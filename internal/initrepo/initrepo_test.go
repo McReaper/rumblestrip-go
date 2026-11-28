@@ -155,6 +155,19 @@ func TestProtectBringsAnExistingRulesetToRumblestripsAndCreatesTheOther(t *testi
 	}
 }
 
+// WHY: GitHub's rules hold a direct push to the default branch: init sets
+// them only once Rumblestrip's workflow is there, so it must tell the two.
+func TestPushedTellsWhetherTheDefaultBranchHoldsRumblestripsWorkflow(t *testing.T) {
+	const call = "GET repos/o/r/commits?path=.github/workflows/rumblestrip.yml&per_page=1"
+	for reply, want := range map[string]bool{`[]`: false, `[{"sha": "abc"}]`: true} {
+		api := &fakeAPI{reply: map[string]string{call: reply}}
+		got, err := initrepo.Pushed(t.Context(), api, "o/r")
+		if err != nil || got != want || !slices.Equal(api.calls, []string{call}) {
+			t.Errorf("commits %s: Pushed = %v, %v after %v, want %v", reply, got, err, api.calls, want)
+		}
+	}
+}
+
 type fakeOwner struct {
 	fakeAPI
 	secrets []initrepo.Secret

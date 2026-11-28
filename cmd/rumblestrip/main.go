@@ -7,7 +7,7 @@
 //	rumblestrip review [--base origin/main] [--approved] [--approved-trees dir] [--labels | --json | --approval]
 //	rumblestrip spec [--base origin/main] [--json]
 //	rumblestrip secrets
-//	rumblestrip init app --name <name>; rumblestrip init --owner <login> [--version <tag>] [--client-id <id>]; rumblestrip init github [--repo <owner/repo>]
+//	rumblestrip init [--owner <login>] [--version <tag>] [--client-id <id>] [--app-name <name>]; rumblestrip init app --name <name>; rumblestrip init github [--repo <owner/repo>]
 package main
 
 import (
