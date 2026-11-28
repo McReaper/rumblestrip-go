@@ -37,6 +37,27 @@ type Diff struct {
 	Base  string // base's merge base with HEAD, set by Read
 }
 
+// AddedLines returns the numbers of the lines d adds to each file keep
+// takes, by path, deleted files left out.
+func (d Diff) AddedLines(keep func(path string) bool) map[string][]int {
+	out := map[string][]int{}
+	for _, f := range d.Files {
+		if f.Status == 'D' || !keep(f.Path) {
+			continue
+		}
+		for _, l := range f.Added {
+			out[f.Path] = append(out[f.Path], l.N)
+		}
+	}
+	return out
+}
+
+// IsProductionGo reports whether p is a Go file the program is built
+// from: neither a test nor under testdata.
+func IsProductionGo(p string) bool {
+	return strings.HasSuffix(p, ".go") && !isTestFile(p)
+}
+
 // Read returns the change from base's merge base to the working tree of
 // the git repository at dir: commits, staged and unstaged edits, and new
 // files git doesn't track yet.

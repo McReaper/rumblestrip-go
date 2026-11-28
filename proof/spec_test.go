@@ -13,7 +13,7 @@ const specTool = "spec/"
 
 func specFindings(t *testing.T, dir string) []finding {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), "spec", "--json")
+	cmd := exec.CommandContext(t.Context(), built(t, "rumblestrip"), "spec", "--base", "base", "--json")
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()

@@ -8,27 +8,38 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/McReaper/rumblestrip-go/internal/guard"
 	"github.com/McReaper/rumblestrip-go/internal/spec"
 	"github.com/spf13/cobra"
 )
 
 func specCommand(out io.Writer) *cobra.Command {
-	var asJSON bool
-	cmd := leaf("spec", "Prove the spec: each scenario passes alone, and fails when a value a Then step expects is altered", func(cmd *cobra.Command) error { return runSpec(cmd.Context(), out, asJSON) })
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print the findings as JSON")
+	var o specOptions
+	cmd := leaf("spec", "Prove the spec: each scenario passes alone, fails when a value a Then step expects is altered, and runs every line the change adds to a slice or the domain", func(cmd *cobra.Command) error { return runSpec(cmd.Context(), out, o) })
+	cmd.Flags().BoolVar(&o.asJSON, "json", false, "print the findings as JSON")
+	cmd.Flags().StringVar(&o.base, "base", "origin/main", "the branch the change goes into")
 	return cmd
 }
 
-func runSpec(ctx context.Context, out io.Writer, asJSON bool) error {
+type specOptions struct {
+	base   string
+	asJSON bool
+}
+
+func runSpec(ctx context.Context, out io.Writer, o specOptions) error {
 	dir, err := filepath.Abs(".")
 	if err != nil {
 		return fmt.Errorf("spec: %w", err)
 	}
-	fs, err := spec.Prove(ctx, dir)
+	d, err := guard.Read(ctx, dir, o.base)
 	if err != nil {
 		return fmt.Errorf("spec: %w", err)
 	}
-	if asJSON {
+	fs, err := spec.Prove(ctx, dir, d.AddedLines(spec.Reachable))
+	if err != nil {
+		return fmt.Errorf("spec: %w", err)
+	}
+	if o.asJSON {
 		err = writeSpecJSON(out, fs)
 	} else {
 		_, err = io.WriteString(out, specReport(fs))

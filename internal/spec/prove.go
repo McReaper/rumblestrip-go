@@ -32,7 +32,11 @@ type Finding struct {
 // expect checks nothing, and the owner who approved the scenario would be
 // trusting a sentence. dir is the root of the module and of its git
 // repository; the runs happen on a copy.
-func Prove(ctx context.Context, dir string) (out []Finding, err error) {
+//
+// added holds the lines a change adds to the files Reachable takes, by
+// path: each one must be run by a scenario as written, or the change adds
+// behaviour the owner never approved.
+func Prove(ctx context.Context, dir string, added map[string][]int) (out []Finding, err error) {
 	scenarios, err := Read(dir)
 	if err != nil {
 		return nil, err
@@ -52,14 +56,14 @@ func Prove(ctx context.Context, dir string) (out []Finding, err error) {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(work)) }()
-	verdict, err := runAll(ctx, work, jobs)
+	verdict, err := runAll(ctx, runner{work: work, added: added}, jobs)
 	return append(out, verdict...), err
 }
 
 // WHY: one build of the spec's test serves every job; a build that fails is
 // the change's to fix, reported in place of what the jobs would prove.
-func runAll(ctx context.Context, work string, jobs []job) ([]Finding, error) {
-	bin, broken, err := buildSpec(ctx, work)
+func runAll(ctx context.Context, r runner, jobs []job) ([]Finding, error) {
+	bin, broken, err := buildSpec(ctx, r.work)
 	switch {
 	case err != nil:
 		return nil, err
@@ -71,7 +75,38 @@ func runAll(ctx context.Context, work string, jobs []job) ([]Finding, error) {
 			"T2: features/ holds the spec but no test that runs it: add the godog test that runs every feature file of the directory",
 		}}, nil
 	}
-	return verdicts(jobs, runner{work, bin}.all(ctx, jobs)), nil
+	r.bin = bin
+	outs := r.all(ctx, jobs)
+	out := verdicts(jobs, outs)
+	if len(r.added) == 0 {
+		return out, nil
+	}
+	reach, err := r.unreached(ctx, jobs, outs)
+	return append(out, reach...), err
+}
+
+// WHY: only the scenarios as written count: a run with an altered value
+// fails on purpose, and what it reached proves nothing the owner approved.
+func (r runner) unreached(ctx context.Context, jobs []job, outs []outcome) (_ []Finding, err error) {
+	var dirs []string
+	for i, j := range jobs {
+		if j.step < 0 && outs[i].passed {
+			dirs = append(dirs, coverDir(r.runDir(i)))
+		}
+	}
+	if len(dirs) == 0 {
+		return nil, nil
+	}
+	root, err := os.OpenRoot(r.work)
+	if err != nil {
+		return nil, fmt.Errorf("read the scenarios' coverage: %w", err)
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
+	blocks, err := reachedBlocks(ctx, root, dirs)
+	if err != nil {
+		return nil, err
+	}
+	return unreached(root, blocks, r.added)
 }
 
 // WHY: a job runs one scenario, as written (step -1), or with the value one
@@ -155,9 +190,18 @@ func compileFindings(text string) []Finding {
 // features/'s other files and the one scenario, so the test finds what it
 // reads at the same relative paths and the runs don't see each other.
 // WHY: the runs share the module's copy and the spec's test, built once.
+// WHY: with lines to reach, the runs as written build the program with
+// -cover.
 type runner struct {
 	work, bin string
+	added     map[string][]int
 }
+
+func (r runner) runDir(i int) string {
+	return filepath.Join(r.work, fmt.Sprintf(".rumblestrip-spec-%d", i))
+}
+
+func coverDir(run string) string { return filepath.Join(run, ".cover") }
 
 func (r runner) all(ctx context.Context, jobs []job) []outcome {
 	out := make([]outcome, len(jobs))
@@ -166,7 +210,7 @@ func (r runner) all(ctx context.Context, jobs []job) []outcome {
 	for range max(1, runtime.NumCPU()/2) {
 		wg.Go(func() {
 			for i := range next {
-				out[i] = r.one(ctx, filepath.Join(r.work, fmt.Sprintf(".rumblestrip-spec-%d", i)), jobs[i].run)
+				out[i] = r.one(ctx, i, jobs[i])
 			}
 		})
 	}
@@ -197,7 +241,10 @@ func failedStep(text string) string {
 	return ""
 }
 
-func (r runner) one(ctx context.Context, dir string, s Scenario) outcome {
+// WHY: GOFLAGS reaches the go build the spec's test runs, and the program
+// it builds writes its counters to GOCOVERDIR, which it inherits.
+func (r runner) one(ctx context.Context, i int, j job) outcome {
+	dir, s := r.runDir(i), j.run
 	if err := os.CopyFS(dir, os.DirFS(filepath.Join(filepath.Dir(dir), Dir))); err != nil {
 		return outcome{err: fmt.Errorf("prepare a run of %q: %w", s.Name, err)}
 	}
@@ -207,7 +254,14 @@ func (r runner) one(ctx context.Context, dir string, s Scenario) outcome {
 	if err := os.WriteFile(filepath.Join(dir, "scenario.feature"), []byte(s.Gherkin()), 0o600); err != nil {
 		return outcome{err: fmt.Errorf("prepare a run of %q: %w", s.Name, err)}
 	}
-	res, err := run.Command(ctx, dir, r.bin, "-test.timeout=5m")
+	var env []string
+	if len(r.added) > 0 && j.step < 0 {
+		if err := os.Mkdir(coverDir(dir), 0o700); err != nil {
+			return outcome{err: fmt.Errorf("prepare a run of %q: %w", s.Name, err)}
+		}
+		env = []string{"GOFLAGS=" + strings.TrimSpace(os.Getenv("GOFLAGS")+" -cover"), "GOCOVERDIR=" + coverDir(dir)}
+	}
+	res, err := run.Run(ctx, run.Cmd{Dir: dir, Env: env, Argv: []string{r.bin, "-test.timeout=5m"}})
 	if err != nil {
 		return outcome{err: err}
 	}
