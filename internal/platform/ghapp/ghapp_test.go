@@ -106,6 +106,13 @@ func fakeGitHub(t *testing.T) ghapp.Client {
 		case "GET /app/installations":
 			reply(t, w, `[{"id":42,"account":{"login":"McReaper"},"repository_selection":"selected"}]`)
 		case "POST /app/installations/42/access_tokens":
+			var asked struct {
+				Repositories []string `json:"repositories"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&asked); err != nil || !slices.Equal(asked.Repositories, []string{"notes"}) {
+				http.Error(w, `{"message":"a token for the repository notes alone, not `+fmt.Sprint(asked.Repositories)+`"}`, http.StatusUnprocessableEntity)
+				return
+			}
 			reply(t, w, `{"token":"ghs_secret","expires_at":"2026-10-31T02:00:00Z"}`)
 		case "GET /app":
 			reply(t, w, `{"slug":"t7-companion-maintainer"}`)
@@ -128,9 +135,12 @@ func TestTheClientListsInstallationsAndMintsATokenWithTheJWT(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].ID != 42 || list[0].Account.Login != "McReaper" {
 		t.Fatalf("Installations = %+v, %v", list, err)
 	}
-	tok, err := c.Token(ctx, "the-jwt", 42)
+	tok, err := c.Token(ctx, "the-jwt", ghapp.Scope{Installation: 42, Repo: "McReaper/notes"})
 	if err != nil || tok.Value != "ghs_secret" || tok.ExpiresAt.IsZero() {
 		t.Fatalf("Token = %v, %v", tok.ExpiresAt, err)
+	}
+	if _, err := c.Token(ctx, "the-jwt", ghapp.Scope{Installation: 42, Repo: "McReaper/other"}); err == nil {
+		t.Error("a token for another repository was asked as one for notes")
 	}
 	slug, err := c.Slug(ctx, "the-jwt")
 	if err != nil || slug != "t7-companion-maintainer" {
@@ -143,6 +153,20 @@ func TestTheClientListsInstallationsAndMintsATokenWithTheJWT(t *testing.T) {
 	inst, err := c.RepoInstallation(ctx, "the-jwt", "McReaper/notes")
 	if err != nil || inst.ID != 42 || inst.Permissions["contents"] != "write" || inst.Permissions["pull_requests"] != "read" {
 		t.Fatalf("RepoInstallation = %+v, %v", inst, err)
+	}
+}
+
+func TestTheAppAtWorkOnARepositoryHasItsTokenAndItsBot(t *testing.T) {
+	c := fakeGitHub(t)
+	want := ghapp.Identity{Login: "t7-companion-maintainer[bot]", ID: 350539711}
+	for _, s := range []ghapp.Scope{{Repo: "McReaper/notes"}, {Installation: 42, Repo: "McReaper/notes"}} {
+		b, err := c.Mint(t.Context(), "the-jwt", s)
+		if err != nil || b.Token.Value != "ghs_secret" || b.Identity != want {
+			t.Errorf("Mint(%+v) = %+v, %v, want the token and %+v", s, b.Identity, err, want)
+		}
+	}
+	if _, err := c.Mint(t.Context(), "the-jwt", ghapp.Scope{Repo: "McReaper/elsewhere"}); err == nil || !strings.Contains(err.Error(), "the App isn't installed on McReaper/elsewhere") {
+		t.Errorf("Mint on a repository the App isn't on: %v", err)
 	}
 }
 
@@ -167,7 +191,7 @@ func TestTheTokenNeverPrintsOrLogs(t *testing.T) {
 func TestTheEnvGivesGitTheTokenThroughAHelperAndTheBotAsAuthor(t *testing.T) {
 	env := ghapp.Env([]string{"PATH=x"}, ghapp.Token{Value: "ghs_secret"}, ghapp.Identity{Login: "app[bot]", ID: 7})
 	for _, want := range []string{
-		"PATH=x", "GH_TOKEN=ghs_secret", "GIT_CONFIG_KEY_1=credential.helper",
+		"PATH=x", "GH_TOKEN=ghs_secret", "GIT_CONFIG_KEY_1=credential.https://github.com.helper",
 		"GIT_AUTHOR_NAME=app[bot]", "GIT_COMMITTER_EMAIL=7+app[bot]@users.noreply.github.com",
 	} {
 		if !slices.Contains(env, want) {

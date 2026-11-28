@@ -1,7 +1,8 @@
 // Package ghapp authenticates as the agent's GitHub App: a JWT signed with
-// the app's private key, exchanged for an installation token that expires
-// within the hour. The key is read only to sign; the token never leaves the
-// environment of the command it is minted for.
+// the app's private key, exchanged for an installation token that opens one
+// repository and expires within the hour. The key is read only to sign; the
+// token lives in the environment of the commands that act as the App, and
+// in the user's cache, readable by the user alone.
 package ghapp
 
 import (
@@ -20,6 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -123,14 +125,14 @@ func JWT(issuer string, key *rsa.PrivateKey, now time.Time) (string, error) {
 // Installations lists where the app is installed.
 func (c Client) Installations(ctx context.Context, jwt string) ([]Installation, error) {
 	var out []Installation
-	return out, c.do(ctx, call{http.MethodGet, "/app/installations", jwt}, &out)
+	return out, c.do(ctx, call{http.MethodGet, "/app/installations", jwt, nil}, &out)
 }
 
 // RepoInstallation returns the app's installation that holds repo
 // ("owner/name").
 func (c Client) RepoInstallation(ctx context.Context, jwt, repo string) (Installation, error) {
 	var out Installation
-	return out, c.do(ctx, call{http.MethodGet, "/repos/" + repo + "/installation", jwt}, &out)
+	return out, c.do(ctx, call{http.MethodGet, "/repos/" + repo + "/installation", jwt, nil}, &out)
 }
 
 // Slug returns the app's slug, which names its bot user: <slug>[bot].
@@ -138,13 +140,52 @@ func (c Client) Slug(ctx context.Context, jwt string) (string, error) {
 	var app struct {
 		Slug string `json:"slug"`
 	}
-	return app.Slug, c.do(ctx, call{http.MethodGet, "/app", jwt}, &app)
+	return app.Slug, c.do(ctx, call{http.MethodGet, "/app", jwt, nil}, &app)
 }
 
-// Token mints an installation token.
-func (c Client) Token(ctx context.Context, jwt string, installation int64) (Token, error) {
+// Scope is what a token opens: the repository Repo, owner/name, through
+// the App's Installation that holds it, or 0 for Mint to look it up.
+type Scope struct {
+	Installation int64
+	Repo         string
+}
+
+// Token mints an installation token that opens s.Repo alone.
+//
+// WHY: a token opens every repository of its installation unless it names
+// one, and the agent's lands in its transcripts: read there, it opens the
+// agent's repository and no other of the owner's.
+func (c Client) Token(ctx context.Context, jwt string, s Scope) (Token, error) {
 	var tok Token
-	return tok, c.do(ctx, call{http.MethodPost, "/app/installations/" + strconv.FormatInt(installation, 10) + "/access_tokens", jwt}, &tok)
+	body := struct {
+		Repositories []string `json:"repositories"`
+	}{[]string{path.Base(s.Repo)}}
+	return tok, c.do(ctx, call{http.MethodPost, "/app/installations/" + strconv.FormatInt(s.Installation, 10) + "/access_tokens", jwt, body}, &tok)
+}
+
+// Mint returns the App at work on s.Repo: a token that opens it alone, and
+// the App's bot user, who commits and pushes.
+func (c Client) Mint(ctx context.Context, jwt string, s Scope) (Bot, error) {
+	if s.Installation == 0 {
+		inst, err := c.RepoInstallation(ctx, jwt, s.Repo)
+		if err != nil {
+			return Bot{}, fmt.Errorf("the App isn't installed on %s, or can't be reached: install it there: %w", s.Repo, err)
+		}
+		s.Installation = inst.ID
+	}
+	tok, err := c.Token(ctx, jwt, s)
+	if err != nil {
+		return Bot{}, err
+	}
+	slug, err := c.Slug(ctx, jwt)
+	if err != nil {
+		return Bot{}, err
+	}
+	id := Identity{Login: slug + "[bot]"}
+	if id.ID, err = c.UserID(ctx, id.Login); err != nil {
+		return Bot{}, err
+	}
+	return Bot{Token: tok, Identity: id}, nil
 }
 
 // UserID returns the id of a user, the app's bot user included.
@@ -152,17 +193,34 @@ func (c Client) UserID(ctx context.Context, login string) (int64, error) {
 	var u struct {
 		ID int64 `json:"id"`
 	}
-	return u.ID, c.do(ctx, call{http.MethodGet, "/users/" + login, ""}, &u)
+	return u.ID, c.do(ctx, call{http.MethodGet, "/users/" + login, "", nil}, &u)
 }
 
 type call struct {
 	method string
 	path   string
 	bearer string
+	body   any
+}
+
+func (k call) request(ctx context.Context, base string) (*http.Request, error) {
+	if k.body == nil {
+		return http.NewRequestWithContext(ctx, k.method, base+k.path, http.NoBody)
+	}
+	data, err := json.Marshal(k.body)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, k.method, base+k.path, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
 }
 
 func (c Client) do(ctx context.Context, k call, out any) error {
-	req, err := http.NewRequestWithContext(ctx, k.method, c.BaseURL+k.path, http.NoBody)
+	req, err := k.request(ctx, c.BaseURL)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", k.method, k.path, err)
 	}

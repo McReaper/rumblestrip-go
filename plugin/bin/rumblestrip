@@ -8,10 +8,11 @@
 # day, so a hook doesn't pay a container's start. app and init need the
 # host's credentials: they run on the host, from the binary rumblestrip setup
 # installs for the pin in ~/.cache/rumblestrip. Setup also installs gh stack,
-# GitHub's extension of gh, which the agent stacks pull requests with. Until setup has pulled the
-# pin's image, the hooks refuse every command and edit but rumblestrip setup:
-# the agent never works unchecked. At a session's start, it gives the agent's
-# gh the App's token, through app token on the host.
+# GitHub's extension of gh, which the agent stacks pull requests with. The
+# agent's gh and git act as the App the repository names, through app env on
+# the host. Until setup has pulled the pin's image, and while the agent can't
+# act as the App, the hooks refuse every command and edit but rumblestrip
+# setup: the agent never works unchecked, nor as the owner.
 set -eu
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "rumblestrip: not in a git repository" >&2
@@ -52,6 +53,16 @@ unfit() {
     echo "Rumblestrip's checks run in its image, which can't use a submodule's git directory: work in a clone of the submodule's repository."
   elif ! command -v docker >/dev/null 2>&1; then
     echo "Rumblestrip's checks run in its image, through Docker, which isn't installed: ask the user to install it, then run rumblestrip setup."
+  fi
+}
+
+# Why the agent can't act as the App the repository names, or nothing: no
+# pinned rumblestrip to ask, no key on this machine, the App not installed.
+identity() {
+  if [ ! -d "$bin" ]; then
+    echo "Rumblestrip $short isn't installed on this machine: run rumblestrip setup, which installs it."
+  elif ! failed=$("$bin/rumblestrip" app env 2>&1 >/dev/null); then
+    echo "The agent acts on GitHub as the App this repository names, and can't now: ${failed#rumblestrip: }."
   fi
 }
 
@@ -138,6 +149,9 @@ in_image() {
       why="Docker isn't running: ask the user to start it."
     fi
   fi
+  if [ -z "$why" ] && [ "$cmd" = hook ]; then
+    why=$(identity)
+  fi
   if [ -n "$why" ]; then
     refuse "$why"
   fi
@@ -185,10 +199,32 @@ setup() {
     echo "rumblestrip: $why" >&2
     exit 1
   fi
+  check_gh
   docker pull "$image"
   install_pin
   install_gh_stack
-  echo "Rumblestrip $short is set up: its checks run in $image."
+  why=$(identity)
+  if [ -n "$why" ]; then
+    echo "rumblestrip: $why" >&2
+    exit 1
+  fi
+  echo "Rumblestrip $short is set up: its checks run in $image, and gh stack is installed."
+}
+
+# Before 2.97, gh auth status hides a token only after its last _, and an
+# App's token holds _ inside: the agent's gh holds the App's, and would show
+# most of it.
+check_gh() {
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "rumblestrip: the agent opens pull requests with gh, the GitHub CLI, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
+    exit 1
+  fi
+  v=$(as_user --version | sed -n 's/^gh version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
+  major=${v%%.*} minor=${v#*.}
+  if [ -z "$v" ] || [ "$major" -lt 2 ] || { [ "$major" = 2 ] && [ "$minor" -lt 97 ]; }; then
+    echo "rumblestrip: gh ${v:-of an unknown version} shows most of the agent's token in gh auth status: ask the user to update gh to 2.97 or later, then run rumblestrip setup." >&2
+    exit 1
+  fi
 }
 
 # The version of gh stack Rumblestrip was tried with. One already there,
@@ -196,10 +232,6 @@ setup() {
 gh_stack=v0.3.0
 
 install_gh_stack() {
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "rumblestrip: the agent opens pull requests with gh, the GitHub CLI, which isn't installed: ask the user to install it, then run rumblestrip setup." >&2
-    exit 1
-  fi
   if ! as_user extension list 2>/dev/null | grep -q 'github/gh-stack'; then
     as_user extension install github/gh-stack --pin "$gh_stack" >&2
   fi
@@ -214,23 +246,18 @@ as_user() {
   )
 }
 
-# The agent's gh acts as the App the repository names, whichever gh it
-# runs: Claude Code reads CLAUDE_ENV_FILE before each of the agent's
-# commands, and gh takes GH_TOKEN over the account logged in. With no token
-# to be had, GH_TOKEN holds one that works nowhere, so gh fails rather than
-# act as the owner, and the session's start says why.
+# The agent's gh and git act as the App the repository names, whichever gh
+# it runs: Claude Code reads CLAUDE_ENV_FILE before each of the agent's
+# commands, app env prints the App's token and its bot, and gh takes
+# GH_TOKEN over the account logged in. With none to be had, GH_TOKEN holds a
+# token that works nowhere, and the hooks refuse, saying why.
 app_env() {
-  if [ -z "${CLAUDE_ENV_FILE-}" ]; then
+  if [ -z "${CLAUDE_ENV_FILE-}" ] || grep -q ' app env ' "$CLAUDE_ENV_FILE" 2>/dev/null; then
     return 0
   fi
-  if ! grep -q ' app token ' "$CLAUDE_ENV_FILE" 2>/dev/null; then
-    cat >>"$CLAUDE_ENV_FILE" <<EOF
-export GH_TOKEN="\$("$bin/rumblestrip" app token 2>/dev/null || echo rumblestrip-no-app-token)"
+  cat >>"$CLAUDE_ENV_FILE" <<EOF
+eval "\$("$bin/rumblestrip" app env 2>/dev/null || echo export GH_TOKEN=rumblestrip-no-app-token GITHUB_TOKEN=rumblestrip-no-app-token)"
 EOF
-  fi
-  if [ -d "$bin" ] && ! why=$("$bin/rumblestrip" app token 2>&1 >/dev/null); then
-    echo "Rumblestrip: gh acts here as the App this repository names, and can't now: ${why#rumblestrip: }. Until then, gh fails: tell the user."
-  fi
 }
 
 case $cmd in
